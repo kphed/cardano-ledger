@@ -72,20 +72,18 @@ import Test.QuickCheck
   )
 import Test.QuickCheck.Instances ()
 
-import Cardano.Binary.Class
-  ( Bi(..)
+import Cardano.Binary
+  ( FromCBOR(..)
+  , ToCBOR(..)
   , Range(..)
   , Size
   , SizeOverride(..)
-  , decodeListLenOf
   , decodeUnknownCborDataItem
-  , encodeListLen
   , encodeUnknownCborDataItem
   , serialize
   , serialize'
   , szSimplify
   , szWithCtx
-  , toLazyByteString
   , unsafeDeserialize
   )
 import Cardano.Binary.Limit (Limit(..))
@@ -259,7 +257,7 @@ msgLenLimitedTest' limit desc whetherTest =
         counterexample desc
           $ counterexample "Potentially unlimited size!"
           $ msgLenLimitedCheck limit a
-    in 
+    in
        -- Increase lists length gradually to avoid hanging.
        conjoin $ doCheck <$> [1 .. 13 :: Int]
 
@@ -357,4 +355,4 @@ szVerify ctx x = case szSimplify (szWithCtx ctx (pure x)) of
   Right range -> OutOfBounds sz range
  where
   sz :: Natural
-  sz = fromIntegral $ LBS.length $ toLazyByteString $ encode x
+  sz = fromIntegral $ LBS.length $ serialize x

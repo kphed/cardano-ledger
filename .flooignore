@@ -1,3 +1,14 @@
+extern
+node_modules
+tmp
+vendor
+.idea/workspace.xml
+.idea/misc.xml
+*.boundary
+*.epoch
+*.index
+tags
+
 ## Ignore LaTeX build products
 **/latex/*.aux
 **/latex/*.lof
@@ -22,12 +33,14 @@
 **/latex/*-blx.aux
 **/latex/*-blx.bib
 **/latex/*.run.xml
+/specs/ledger/hs/.ghc.environment.x86_64-linux-8.4.3
+/specs/ledger/hs/.ghc.environment.x86_64-linux-8.6.0.20180810
 **/*~
 **/dist-newstyle
 
 # Cabal & Stack
 .stack-work*/
-**/dist
+*/dist
 
 # Editors
 TAGS
@@ -37,25 +50,3 @@ TAGS
 
 # Emacs auto-generated Emacs-lisp code
 auto/
-
-# MacOS Stuff
-.DS_Store
-
-# Floobits
-.floo
-
-# Nix artifacts
-specs/**/result
-result
-specs/**/.ghc.environment.x86_64-linux-*
-
-# Profiler and profiteur artifacts
-*.aux
-*.folded
-*.prof
-*.hp
-*.ps
-*.html
-
-# gitinfo2 auxiliary file
-gitHeadLocal.gin

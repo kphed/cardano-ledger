@@ -24,7 +24,8 @@ import Hedgehog.Internal.Property (failWith)
 import Hedgehog.Internal.Show
   (LineDiff, lineDiff, mkValue, renderLineDiff, showPretty)
 
-import Cardano.Binary.Class (Bi(..), decodeFull, decodeFullDecoder, serialize)
+import Cardano.Binary
+  (FromCBOR(..), ToCBOR(..), decodeFull, decodeFullDecoder, serialize)
 import qualified Prelude
 import Text.Show.Pretty (Value(..))
 
@@ -65,7 +66,6 @@ failHexDumpDiff x y = case hexDumpDiff x y of
     ["━━━ Not Equal ━━━", showPretty x, showPretty y]
   Just dif -> withFrozenCallStack $ failWith Nothing $ renderHexDumpDiff dif
 
-goldenTestBi :: (Bi a, Eq a, Show a, HasCallStack) => a -> FilePath -> Property
 goldenTestBi x path = withFrozenCallStack $ do
   let bs' = encodeWithIndex . serialize $ x
   withTests 1 . property $ do
