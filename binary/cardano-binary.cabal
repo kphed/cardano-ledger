@@ -21,17 +21,18 @@ flag development
 library
   hs-source-dirs:      src
   exposed-modules:
-                       Cardano.Binary.Class
-                       Cardano.Binary.Limit
-                       Cardano.Binary.ToCBOR
-                       Cardano.Binary.FromCBOR
-                       Cardano.Binary.EvilInstances
+                       Cardano.Binary
 
   other-modules:
-                       Cardano.Binary.Class.Core
-                       Cardano.Binary.Class.Drop
-                       Cardano.Binary.Class.Primitive
-                       Cardano.Binary.Class.Annotated
+                       Cardano.Binary.Annotated
+                       Cardano.Binary.Drop
+                       Cardano.Binary.Limit
+
+                       Cardano.Binary.ToCBOR
+                       Cardano.Binary.FromCBOR
+
+                       Cardano.Binary.Serialize
+                       Cardano.Binary.Deserialize
 
   build-depends:     base
                      , aeson

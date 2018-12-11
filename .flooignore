@@ -1,3 +1,14 @@
+extern
+node_modules
+tmp
+vendor
+.idea/workspace.xml
+.idea/misc.xml
+*.boundary
+*.epoch
+*.index
+tags
+
 ## Ignore LaTeX build products
 **/latex/*.aux
 **/latex/*.lof
@@ -39,10 +50,3 @@ TAGS
 
 # Emacs auto-generated Emacs-lisp code
 auto/
-
-# MacOS Stuff
-.DS_Store
-
-# Floobits
-.floo
-

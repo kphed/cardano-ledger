@@ -6,7 +6,7 @@
 {-# LANGUAGE Rank2Types         #-}
 {-# LANGUAGE TypeFamilies       #-}
 
-module Cardano.Binary.Class.Annotated
+module Cardano.Binary.Annotated
   ( Annotated(..)
   , ByteSpan(..)
   , Decoded(..)
