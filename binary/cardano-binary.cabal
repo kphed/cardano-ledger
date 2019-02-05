@@ -27,6 +27,7 @@ library
                        Cardano.Binary.Annotated
                        Cardano.Binary.Drop
                        Cardano.Binary.Limit
+                       Cardano.Binary.Raw
 
                        Cardano.Binary.ToCBOR
                        Cardano.Binary.FromCBOR
