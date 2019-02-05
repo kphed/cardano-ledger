@@ -11,12 +11,13 @@ module Cardano.Binary.FromCBOR
   ( FromCBOR(..)
   , enforceSize
   , matchSize
+  , module D
   )
 where
 
 import Cardano.Prelude
 
-import qualified Codec.CBOR.Decoding as D
+import Codec.CBOR.Decoding as D
 import qualified Codec.CBOR.Read as CBOR.Read
 import qualified Data.ByteString.Lazy as BS.Lazy
 import Data.Fixed (Fixed(..), Nano, Pico)

@@ -13,6 +13,7 @@
 module Cardano.Binary.ToCBOR
   ( ToCBOR(..)
   , withWordSize
+  , module E
 
     -- * Size of expressions
   , Range(..)
@@ -35,8 +36,7 @@ module Cardano.Binary.ToCBOR
 where
 
 
-import Codec.CBOR.Encoding (Encoding)
-import qualified Codec.CBOR.Encoding as E
+import Codec.CBOR.Encoding as E
 import qualified Data.ByteString.Lazy as BS.Lazy
 import Data.Fixed (E12, Fixed(..), Nano, Pico, resolution)
 import Data.Functor.Foldable (Fix(..), cata, unfix)

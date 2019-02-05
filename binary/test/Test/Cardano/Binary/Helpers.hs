@@ -1,28 +1,25 @@
 {-# LANGUAGE AllowAmbiguousTypes        #-}
 {-# LANGUAGE ConstraintKinds            #-}
-{-# LANGUAGE GeneralizedNewtypeDeriving #-}
 {-# LANGUAGE OverloadedStrings          #-}
 {-# LANGUAGE RankNTypes                 #-}
 {-# LANGUAGE RecordWildCards            #-}
 {-# LANGUAGE ScopedTypeVariables        #-}
-{-# LANGUAGE StandaloneDeriving         #-}
 {-# LANGUAGE TypeApplications           #-}
 
 {-# OPTIONS_GHC -fno-warn-orphans #-}
 
 module Test.Cardano.Binary.Helpers
-  ( -- * From/to
-    identityTest
-
-       -- * Binary test helpers
-  , U
+  (
+  -- * Binary test helpers
+    U
   , U24
   , extensionProperty
+  , cborFlatTermValid
 
-       -- * Message length
+  -- * Message length
   , msgLenLimitedTest
 
-       -- * Static size estimates
+  -- * Static size estimates
   , SizeTestConfig(..)
   , cfg
   , scfg
@@ -31,7 +28,6 @@ module Test.Cardano.Binary.Helpers
 where
 
 import Cardano.Prelude
-import Test.Cardano.Prelude
 
 import Codec.CBOR.FlatTerm (toFlatTerm, validFlatTerm)
 import qualified Data.ByteString as BS
@@ -46,7 +42,6 @@ import Formatting (Buildable, bprint, build, formatToString, int)
 import Hedgehog (annotate, failure, forAllWith, success)
 import qualified Hedgehog as HH
 import qualified Hedgehog.Gen as HH.Gen
-import Prelude (read)
 import Test.Hspec (Spec, describe)
 import Test.Hspec.QuickCheck (modifyMaxSuccess, prop)
 import Test.QuickCheck
@@ -72,7 +67,9 @@ import Cardano.Binary
   , Size
   , SizeOverride(..)
   , ToCBOR(..)
+  , decodeListLenOf
   , decodeUnknownCborDataItem
+  , encodeListLen
   , encodeUnknownCborDataItem
   , serialize
   , serialize'
@@ -87,12 +84,8 @@ import Cardano.Binary.Limit (Limit(..))
 -- From/to tests
 --------------------------------------------------------------------------------
 
--- | Basic binary serialization/deserialization identity.
-binaryEncodeDecode :: (Show a, Eq a, ToCBOR a, FromCBOR a) => a -> Property
-binaryEncodeDecode a = (unsafeDeserialize . serialize $ a) === a
-
 -- | Machinery to test we perform "flat" encoding.
-cborFlatTermValid :: (FromCBOR a, ToCBOR a) => a -> Property
+cborFlatTermValid :: ToCBOR a => a -> Property
 cborFlatTermValid = property . validFlatTerm . toFlatTerm . toCBOR
 
 --------------------------------------------------------------------------------
@@ -190,7 +183,7 @@ extensionProperty = forAll @a (arbitrary :: Gen a) $ \input ->
 -- Message length
 --------------------------------------------------------------------------------
 
-msgLenLimitedCheck :: (FromCBOR a, ToCBOR a) => Limit a -> a -> Property
+msgLenLimitedCheck :: ToCBOR a => Limit a -> a -> Property
 msgLenLimitedCheck limit msg = if sz <= fromIntegral limit
   then property True
   else flip counterexample False $ formatToString
@@ -201,7 +194,7 @@ msgLenLimitedCheck limit msg = if sz <= fromIntegral limit
 
 msgLenLimitedTest'
   :: forall a
-   . (Show a, Arbitrary a, Typeable a, ToCBOR a)
+   . (Show a, Arbitrary a, FromCBOR a, ToCBOR a)
   => Limit a
   -> String
   -> (a -> Bool)
@@ -210,7 +203,7 @@ msgLenLimitedTest' limit desc whetherTest =
   -- instead of checking for `arbitrary` values, we'd better generate
   -- many values and find maximal message size - it allows user to get
   -- correct limit on the spot, if needed.
-  addDesc $ modifyMaxSuccess (const 1) $ flip prop (typeName @a) $ \_ ->
+  addDesc $ modifyMaxSuccess (const 1) $ prop typeName $ \(_ :: a) ->
     findLargestCheck .&&. listsCheck
  where
   typeName :: String
@@ -240,23 +233,17 @@ msgLenLimitedTest' limit desc whetherTest =
         counterexample desc
           $ counterexample "Potentially unlimited size!"
           $ msgLenLimitedCheck limit a
-    in 
+    in
        -- Increase lists length gradually to avoid hanging.
        conjoin $ doCheck <$> [1 .. 13 :: Int]
 
 msgLenLimitedTest
   :: forall a
-   . (Eq a, Show a, Arbitrary a, Typeable a, ToCBOR a, FromCBOR a)
+   . (Show a, Arbitrary a, ToCBOR a, FromCBOR a)
   => Limit a
   -> Spec
 msgLenLimitedTest lim = msgLenLimitedTest' @a lim "" (const True)
 
---------------------------------------------------------------------------------
--- Orphans
---------------------------------------------------------------------------------
-
-deriving instance (FromCBOR bi) => FromCBOR (SmallGenerator bi)
-deriving instance (ToCBOR bi) => ToCBOR (SmallGenerator bi)
 
 --------------------------------------------------------------------------------
 -- Static size estimates
@@ -296,7 +283,7 @@ scfg = SizeTestConfig
   }
 
 -- | Create a test case from the given test configuration.
-sizeTest :: forall a . (FromCBOR a, ToCBOR a) => SizeTestConfig a -> HH.Property
+sizeTest :: forall a . ToCBOR a => SizeTestConfig a -> HH.Property
 sizeTest SizeTestConfig {..} = HH.property $ do
   x <- forAllWith debug gen
 
@@ -332,10 +319,9 @@ data ComparisonResult
     | BoundsAreSymbolic Size         -- ^ The bounds could not be reduced to a numerical range.
     | OutOfBounds Natural (Range Natural)  -- ^ The size fell outside of the bounds.
 
--- | For a given value @x :: a@ with @Bi a@, check that the encoded size
+-- | For a given value @x :: a@ with @ToCBOR a@, check that the encoded size
 --   of @x@ falls within the statically-computed size range for @a@.
-szVerify
-  :: (FromCBOR a, ToCBOR a) => Map TypeRep SizeOverride -> a -> ComparisonResult
+szVerify :: ToCBOR a => Map TypeRep SizeOverride -> a -> ComparisonResult
 szVerify ctx x = case szSimplify (szWithCtx ctx (pure x)) of
   Left bounds -> BoundsAreSymbolic bounds
   Right range | lo range <= sz && sz <= hi range ->

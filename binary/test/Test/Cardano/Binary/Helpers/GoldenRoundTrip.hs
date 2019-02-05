@@ -1,11 +1,11 @@
 {-# LANGUAGE RankNTypes #-}
 
--- | Golden and round-trip testing of 'Bi' instances
+-- | Golden and round-trip testing of 'FromCBOR' and 'ToCBOR' instances
 
 module Test.Cardano.Binary.Helpers.GoldenRoundTrip
-  ( goldenTestBi
-  , roundTripsBiShow
-  , roundTripsBiBuildable
+  ( goldenTestCBOR
+  , roundTripsCBORShow
+  , roundTripsCBORBuildable
   , compareHexDump
   , deprecatedGoldenDecode
   )
@@ -66,7 +66,12 @@ failHexDumpDiff x y = case hexDumpDiff x y of
     ["━━━ Not Equal ━━━", showPretty x, showPretty y]
   Just dif -> withFrozenCallStack $ failWith Nothing $ renderHexDumpDiff dif
 
-goldenTestBi x path = withFrozenCallStack $ do
+goldenTestCBOR
+  :: (FromCBOR a, ToCBOR a, Eq a, Show a, HasCallStack)
+  => a
+  -> FilePath
+  -> Property
+goldenTestCBOR x path = withFrozenCallStack $ do
   let bs' = encodeWithIndex . serialize $ x
   withTests 1 . property $ do
     bs <- liftIO $ BS.readFile path
@@ -75,17 +80,19 @@ goldenTestBi x path = withFrozenCallStack $ do
     fmap decodeFull target === Just (Right x)
 
 
--- | Round trip test a value (any instance of both the 'Bi' and 'Show' classes)
---   by serializing it to a ByteString and back again and that also has a 'Show'
---   instance. If the 'a' type has both 'Show' and 'Buildable' instances, it's
---   best to use this version.
-roundTripsBiShow :: (Bi a, Eq a, MonadTest m, Show a) => a -> m ()
-roundTripsBiShow x = tripping x serialize decodeFull
+-- | Round trip test a value (any instance of 'FromCBOR', 'ToCBOR', and 'Show'
+--   classes) by serializing it to a ByteString and back again and that also has
+--   a 'Show' instance. If the 'a' type has both 'Show' and 'Buildable'
+--   instances, it's best to use this version.
+roundTripsCBORShow
+  :: (FromCBOR a, ToCBOR a, Eq a, MonadTest m, Show a) => a -> m ()
+roundTripsCBORShow x = tripping x serialize decodeFull
 
--- | Round trip (via ByteString) any instance of the 'Bi' class
---   that also has a 'Buildable' instance.
-roundTripsBiBuildable :: (Bi a, Eq a, MonadTest m, Buildable a) => a -> m ()
-roundTripsBiBuildable a = trippingBuildable a serialize decodeFull
+-- | Round trip (via ByteString) any instance of the 'FromCBOR' and 'ToCBOR'
+--   class that also has a 'Buildable' instance.
+roundTripsCBORBuildable
+  :: (FromCBOR a, ToCBOR a, Eq a, MonadTest m, Buildable a) => a -> m ()
+roundTripsCBORBuildable a = trippingBuildable a serialize decodeFull
 
 deprecatedGoldenDecode
   :: HasCallStack => Text -> (forall s . D.Decoder s ()) -> FilePath -> Property
