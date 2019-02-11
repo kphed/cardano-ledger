@@ -7,6 +7,7 @@
 
 module Cardano.Chain.Block.Validation
   ( updateChain
+  , updateChainBlock
   , updateChainBoundary
   , ChainValidationState
   , initialChainValidationState
@@ -212,17 +213,26 @@ updateChainBoundary config cvs bvd = do
       $ boundaryHeaderBytes bvd
     }
 
+updateChain
+  :: MonadError ChainValidationError m
+  => Genesis.Config
+  -> ChainValicationState
+  -> ABlockOrBoundary ByteString
+  -> m ChainValidationState
+updateChain config c b = case b of
+  ABOBBoundary bvd   -> updateChainBoundary config c bvd
+  ABOBBlock    block -> updateChainBlock config c block
 
 -- | This is an implementation of the blockchain extension rule from the chain
 --   specification. It validates a new block and passes parts of the body
 --   through to the ledger for validation.
-updateChain
+updateChainBlock
   :: MonadError ChainValidationError m
   => Genesis.Config
   -> ChainValidationState
   -> ABlock ByteString
   -> m ChainValidationState
-updateChain config cvs b = do
+updateChainBlock config cvs b = do
   let
     prevHash = fromMaybe
       (getGenesisHash $ configGenesisHash config)

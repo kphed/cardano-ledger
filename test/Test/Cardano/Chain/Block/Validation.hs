@@ -45,7 +45,7 @@ import Cardano.Chain.Block
   , SigningHistory(..)
   , blockSlot
   , initialChainValidationState
-  , updateChain
+  , updateChainBlock
   , updateChainBoundary
   , updateSigningHistory
   )
@@ -128,10 +128,7 @@ foldChainValidationState
   -> ExceptT Error ResIO ChainValidationState
 foldChainValidationState config cvs blocks = S.foldM_
   (\c b ->
-    withExceptT (ErrorChainValidationError (blockOrBoundarySlot b)) $ case b of
-      ABOBBoundary bvd   -> updateChainBoundary config c bvd
-      ABOBBlock    block -> updateChain config c block
-  )
+    withExceptT (ErrorChainValidationError (blockOrBoundarySlot b)) $ updateChain
   (pure cvs)
   pure
   (hoist (withExceptT ErrorParseError) blocks)
