@@ -126,6 +126,7 @@ library
                      , cardano-shell
                      , cborg
                      , containers
+                     , concurrency
                      , cryptonite
                      , Cabal
                      , directory

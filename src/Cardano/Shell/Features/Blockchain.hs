@@ -1,4 +1,5 @@
-{-# LANGUAGE RankNTypes #-}
+{-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE RankNTypes        #-}
 
 module Cardano.Shell.Features.Blockchain
   ( BlockchainLayer(..)
@@ -15,15 +16,15 @@ import Cardano.Shell.Types
   , CardanoFeatureInit(..)
   )
 
+import Cardano.Chain.Block (ABlock)
+import Control.Monad.Conc.Class (MonadConc)
+
 todo :: forall a . a
 todo = let x = x in x
 
 data BlockchainLayer = BlockchainLayer {
   runBlockchainLayer :: forall m . MonadIO m => m ()
 }
-
-doUpdate :: State -> ABlock ByteString -> Either SomeError State
-doUpdate state block = _
 
 init :: forall m . (MonadIO m, MonadConc m) => m ()
 init = todo
@@ -42,5 +43,5 @@ createBlockchainFeature cardanoEnvironment cardanoConfiguration = do
       , featureStart    = init
       , featureShutdown = cleanup
       }
-    layer = BlockchainLayer {update = doUpdate}
+    layer = BlockchainLayer {runBlockchainLayer = todo}
   pure (layer, feature)
