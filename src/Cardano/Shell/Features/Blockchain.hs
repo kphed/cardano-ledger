@@ -13,7 +13,6 @@ import Cardano.Shell.Types
   ( CardanoConfiguration
   , CardanoEnvironment
   , CardanoFeature(..)
-  , CardanoFeatureInit(..)
   )
 
 import Cardano.Chain.Block (ABlock)
@@ -32,11 +31,20 @@ init = todo
 cleanup :: forall m . (MonadIO m, MonadConc m) => m ()
 cleanup = todo
 
+createBlockchainLayer :: BlockchainConfiguration -> IO BlockchainLayer
+createBlockchainLayer _ _ = BlockchainLayer
+  { runBlockchainLayer = go
+  }
+  where go =
+
 createBlockchainFeature
   :: CardanoEnvironment
   -> CardanoConfiguration
   -> IO (BlockchainLayer, CardanoFeature)
 createBlockchainFeature cardanoEnvironment cardanoConfiguration = do
+  -- Get the configuration from somewhere
+  -- Get the initial chain validation state
+  -- Fold
   let
     feature = CardanoFeature
       { featureName     = "Blockchain"

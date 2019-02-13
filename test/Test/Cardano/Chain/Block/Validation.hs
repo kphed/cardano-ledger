@@ -11,13 +11,10 @@ where
 
 import Cardano.Prelude
 
-import Control.Monad.Trans.Resource (ResIO, runResourceT)
 import Data.IORef (IORef, newIORef, readIORef, writeIORef)
 import qualified Data.Map.Strict as M
 import qualified Data.Sequence as Seq
 import Data.String (fromString)
-import Streaming (Of(..), Stream, hoist)
-import qualified Streaming.Prelude as S
 import System.FilePath (takeFileName)
 
 import Hedgehog
@@ -39,19 +36,14 @@ import qualified Hedgehog.Gen as Gen
 import qualified Hedgehog.Range as Range
 
 import Cardano.Chain.Block
-  ( ABlockOrBoundary(..)
-  , ChainValidationError
-  , ChainValidationState
+  ( ChainValidationState
   , SigningHistory(..)
-  , blockSlot
   , initialChainValidationState
-  , updateChain
   , updateSigningHistory
   )
 import Cardano.Chain.Common (BlockCount(..), mkStakeholderId)
-import Cardano.Chain.Epoch.File (ParseError, parseEpochFileWithBoundary)
+import Cardano.Chain.Epoch.Validation (validateEpochFile)
 import Cardano.Chain.Genesis as Genesis (Config(..), mkConfigFromFile)
-import Cardano.Chain.Slotting (SlotId)
 import Cardano.Crypto (PublicKey)
 import Cardano.Mirror (mainnetEpochFiles)
 
@@ -101,43 +93,14 @@ tests scenario = do
     <*> checkParallel $$(discover)
 
 
-data Error
-  = ErrorParseError ParseError
-  | ErrorChainValidationError (Maybe SlotId) ChainValidationError
-  deriving (Eq, Show)
-
-
--- | Check that a single epoch's 'Block's are valid by folding over them
+-- | Check that a single epoch's 'Block's are valid
 epochValid
   :: Genesis.Config -> IORef ChainValidationState -> FilePath -> Property
 epochValid config cvsRef fp = withTests 1 . property $ do
-  cvs <- liftIO $ readIORef cvsRef
-  let stream = parseEpochFileWithBoundary fp
-  result <- (liftIO . runResourceT . runExceptT)
-    (foldChainValidationState config cvs $ S.map fst stream)
-  newCvs <- evalEither result
-  liftIO $ writeIORef cvsRef newCvs
-
-
--- | Fold chain validation over a 'Stream' of 'Blund's
-foldChainValidationState
-  :: Genesis.Config
-  -> ChainValidationState
-  -> Stream (Of (ABlockOrBoundary ByteString)) (ExceptT ParseError ResIO) ()
-  -> ExceptT Error ResIO ChainValidationState
-foldChainValidationState config cvs blocks = S.foldM_
-  (\c b ->
-    withExceptT (ErrorChainValidationError (blockOrBoundarySlot b))
-      $ updateChain config c b
-  )
-  (pure cvs)
-  pure
-  (hoist (withExceptT ErrorParseError) blocks)
- where
-  blockOrBoundarySlot :: ABlockOrBoundary a -> Maybe SlotId
-  blockOrBoundarySlot = \case
-    ABOBBoundary _     -> Nothing
-    ABOBBlock    block -> Just $ blockSlot block
+  cvs    <- liftIO $ readIORef cvsRef
+  result <- liftIO $ validateEpochFile config cvs fp
+  cvs'   <- evalEither result
+  liftIO $ writeIORef cvsRef cvs'
 
 
 --------------------------------------------------------------------------------
