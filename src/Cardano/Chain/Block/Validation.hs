@@ -28,6 +28,7 @@ import Data.Sequence (Seq(..), (<|))
 
 import Cardano.Chain.Block.Block
   ( ABlock(..)
+  , ABlockOrBoundary(..)
   , BoundaryValidationData(..)
   , blockDlgPayload
   , blockHashAnnotated
@@ -182,6 +183,17 @@ data ChainValidationError
 -- Validation Functions
 --------------------------------------------------------------------------------
 
+updateChain
+  :: MonadError ChainValidationError m
+  => Genesis.Config
+  -> ChainValidationState
+  -> ABlockOrBoundary ByteString
+  -> m ChainValidationState
+updateChain config c b = case b of
+  ABOBBoundary bvd   -> updateChainBoundary config c bvd
+  ABOBBlock    block -> updateChainBlock config c block
+
+
 updateChainBoundary
   :: MonadError ChainValidationError m
   => Genesis.Config
@@ -213,15 +225,6 @@ updateChainBoundary config cvs bvd = do
       $ boundaryHeaderBytes bvd
     }
 
-updateChain
-  :: MonadError ChainValidationError m
-  => Genesis.Config
-  -> ChainValicationState
-  -> ABlockOrBoundary ByteString
-  -> m ChainValidationState
-updateChain config c b = case b of
-  ABOBBoundary bvd   -> updateChainBoundary config c bvd
-  ABOBBlock    block -> updateChainBlock config c block
 
 -- | This is an implementation of the blockchain extension rule from the chain
 --   specification. It validates a new block and passes parts of the body

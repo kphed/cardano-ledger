@@ -32,6 +32,8 @@ library
                        Cardano.Chain.Txp
                        Cardano.Chain.Update
 
+                       Cardano.Shell.Features.Blockchain
+
   other-modules:
                        Cardano.Chain.Block.Block
                        Cardano.Chain.Block.Body
@@ -121,6 +123,7 @@ library
                      , cardano-binary
                      , cardano-crypto-wrapper
                      , cardano-prelude
+                     , cardano-shell
                      , cborg
                      , containers
                      , cryptonite
