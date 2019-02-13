@@ -8,6 +8,7 @@
 
 module Cardano.Chain.Block.Validation
   ( updateBody
+  , updateChainBlockOrBoundary
   , updateChainBoundary
   , updateHeader
   , updateBlock
@@ -31,6 +32,7 @@ import Data.Sequence (Seq(..), (<|))
 
 import Cardano.Chain.Block.Block
   ( ABlock(..)
+  , ABlockOrBoundary(..)
   , BoundaryValidationData(..)
   , blockDlgPayload
   , blockHashAnnotated
@@ -189,6 +191,17 @@ data ChainValidationError
 --------------------------------------------------------------------------------
 -- Validation Functions
 --------------------------------------------------------------------------------
+
+updateChainBlockOrBoundary
+  :: MonadError ChainValidationError m
+  => Genesis.Config
+  -> ChainValidationState
+  -> ABlockOrBoundary ByteString
+  -> m ChainValidationState
+updateChainBlockOrBoundary config c b = case b of
+  ABOBBoundary bvd   -> updateChainBoundary config c bvd
+  ABOBBlock    block -> updateBlock config c block
+
 
 updateChainBoundary
   :: MonadError ChainValidationError m

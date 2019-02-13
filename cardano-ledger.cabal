@@ -25,6 +25,7 @@ library
                        Cardano.Chain.Constants
                        Cardano.Chain.Delegation
                        Cardano.Chain.Epoch.File
+                       Cardano.Chain.Epoch.Validation
                        Cardano.Chain.Genesis
                        Cardano.Chain.ProtocolConstants
                        Cardano.Chain.Slotting
@@ -124,6 +125,7 @@ library
                      , cardano-prelude
                      , cborg
                      , containers
+                     , concurrency
                      , cryptonite
                      , Cabal
                      , directory
@@ -152,7 +154,30 @@ library
   if (!flag(development))
     ghc-options:         -Werror
 
-test-suite cardano-ledger-test
+executable cardano-chain-validation-exe
+  main-is:             Main.hs
+  other-modules:
+                       Features.Blockchain
+  hs-source-dirs:      app
+
+  build-depends:       base
+                     , cardano-ledger
+                     , cardano-mainnet-mirror
+                     , cardano-prelude
+                     , cardano-shell
+                     , formatting
+                     , iohk-monitoring
+
+  default-language:    Haskell2010
+  default-extensions:  NoImplicitPrelude
+
+  ghc-options:         -Weverything
+                       -fno-warn-all-missed-specialisations
+                       -fno-warn-missing-import-lists
+                       -fno-warn-safe
+                       -fno-warn-unsafe
+
+test-suite cardano-chain-test
   hs-source-dirs:      test
   main-is:             test.hs
   type:                exitcode-stdio-1.0

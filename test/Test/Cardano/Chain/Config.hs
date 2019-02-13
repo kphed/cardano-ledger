@@ -19,4 +19,4 @@ readMainetCfg =
       (panic "TODO: Add buildable instance for Genesis.ConfigurationError")
       identity
     <$> runExceptT
-          (Genesis.mkConfigFromFile "test/mainnet-genesis.json" Nothing)
+          (Genesis.mkConfigFromFile "mainnet-genesis.json" Nothing)

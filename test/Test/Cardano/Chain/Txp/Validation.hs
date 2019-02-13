@@ -48,7 +48,7 @@ tests scenario = do
 
   -- Get 'GenesisData' from the mainnet JSON configuration
   genesisData <- either (panic . sformat build) fst
-    <$> runExceptT (readGenesisData "test/mainnet-genesis.json")
+    <$> runExceptT (readGenesisData "mainnet-genesis.json")
 
   -- Extract mainnet 'ProtocolMagic'
   let pm = getProtocolMagicId $ gdProtocolMagic genesisData
