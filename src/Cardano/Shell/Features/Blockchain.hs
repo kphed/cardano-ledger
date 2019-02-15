@@ -1,3 +1,4 @@
+{-# LANGUAGE FlexibleContexts  #-}
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE RankNTypes        #-}
 
@@ -7,51 +8,47 @@ module Cardano.Shell.Features.Blockchain
   )
 where
 
-
 import Cardano.Prelude
+
+import Control.Monad.Conc.Class (MonadConc)
+import System.FilePath (isExtensionOf, (</>))
+import System.Directory (getDirectoryContents)
+
 import Cardano.Shell.Types
   (CardanoConfiguration, CardanoEnvironment, CardanoFeature(..))
-
 import Cardano.Chain.Block (ABlock, ChainValidationState)
-import Control.Monad.Conc.Class (MonadConc)
+import Cardano.Chain.Epoch.Validation (validateEpochFile, EpochError)
 import qualified Cardano.Chain.Genesis.Config as Genesis
 
-todo :: forall a . a
-todo = let x = x in x
 
-data BlockchainLayer = BlockchainLayer {
-  chainValidationStatus :: (MonadIO m, MonadError EpochError m) => m ()
-}
+data BlockchainLayer = BlockchainLayer
+  { chainValidationStatus :: forall m. (MonadIO m, MonadError EpochError m) => m ()
+  }
 
-data BlockchainConfiguration = BlockchainConiguration
-  { epochFileDir :: Text
-  , genesisConfig :: Genesis.Config
+data BlockchainConfiguration = BlockchainConfiguration
+  { configEpochFileDir :: FilePath
+  , genesisConfig      :: Genesis.Config
   }
 
 init
   :: forall m
    . (MonadIO m, MonadConc m)
   => BlockchainConfiguration
-  -> ChainvalidationState
+  -> ChainValidationState
   -> MVar (Either EpochError ())
   -> m ()
-init config csv resultVar = do
-  epochFiles <-
+init config cvs resultVar = do
+  let epochFileDir = configEpochFileDir config
+  epochFiles <- liftIO $
     sort
-    .   fmap (dataDir </>)
+    .   fmap (epochFileDir </>)
     .   filter ("epoch" `isExtensionOf`)
-    <$> getDirectoryContents (epochFileDir conf)
-  result <- eunExceptT
-    $ foldM (ExceptT $ validateEpochFile (genesisConfig conf)) csv epochFiles
-  putMVar resultVar result
-
-{-
- - validateEpochFile
-  :: Genesis.Config
-  -> ChainValidationState
-  -> FilePath
-  -> IO (Either EpochError ChainValidationState)
--}
+    <$> getDirectoryContents epochFileDir
+  result <- liftIO . runExceptT . void $ foldM
+    (fmap ExceptT <$> validateEpochFile (genesisConfig config))
+    cvs
+    epochFiles
+  liftIO $ putMVar resultVar result
 
 
 cleanup :: forall m . (MonadIO m, MonadConc m) => m ()
@@ -65,6 +62,7 @@ createBlockchainFeature cardanoEnvironment cardanoConfiguration = do
   -- Get the configuration from somewhere
   -- Get the initial chain validation state
   -- Fold
+  resultVar <- newEmptyMVar
   let
     resultVar = _ :: MVar (Either EpochError ())
     cvs       = _ :: ChainValidationState
@@ -73,5 +71,5 @@ createBlockchainFeature cardanoEnvironment cardanoConfiguration = do
       , featureStart    = init blockchainConf cvs resultVar
       , featureShutdown = cleanup
       }
-    layer = BlockchainLayer {blockchainState = readMVar resultVar}
+    layer = BlockchainLayer {chainValidationStatus = readMVar resultVar}
   pure (layer, feature)
