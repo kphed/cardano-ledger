@@ -10,32 +10,52 @@ where
 
 import Cardano.Prelude
 import Cardano.Shell.Types
-  ( CardanoConfiguration
-  , CardanoEnvironment
-  , CardanoFeature(..)
-  )
+  (CardanoConfiguration, CardanoEnvironment, CardanoFeature(..))
 
-import Cardano.Chain.Block (ABlock)
+import Cardano.Chain.Block (ABlock, ChainValidationState)
 import Control.Monad.Conc.Class (MonadConc)
+import qualified Cardano.Chain.Genesis.Config as Genesis
 
 todo :: forall a . a
 todo = let x = x in x
 
 data BlockchainLayer = BlockchainLayer {
-  runBlockchainLayer :: forall m . MonadIO m => m ()
+  chainValidationStatus :: (MonadIO m, MonadError EpochError m) => m ()
 }
 
-init :: forall m . (MonadIO m, MonadConc m) => m ()
-init = todo
+data BlockchainConfiguration = BlockchainConiguration
+  { epochFileDir :: Text
+  , genesisConfig :: Genesis.Config
+  }
+
+init
+  :: forall m
+   . (MonadIO m, MonadConc m)
+  => BlockchainConfiguration
+  -> ChainvalidationState
+  -> MVar (Either EpochError ())
+  -> m ()
+init config csv resultVar = do
+  epochFiles <-
+    sort
+    .   fmap (dataDir </>)
+    .   filter ("epoch" `isExtensionOf`)
+    <$> getDirectoryContents (epochFileDir conf)
+  result <- eunExceptT
+    $ foldM (ExceptT $ validateEpochFile (genesisConfig conf)) csv epochFiles
+  putMVar resultVar result
+
+{-
+ - validateEpochFile
+  :: Genesis.Config
+  -> ChainValidationState
+  -> FilePath
+  -> IO (Either EpochError ChainValidationState)
+-}
+
 
 cleanup :: forall m . (MonadIO m, MonadConc m) => m ()
-cleanup = todo
-
-createBlockchainLayer :: BlockchainConfiguration -> IO BlockchainLayer
-createBlockchainLayer _ _ = BlockchainLayer
-  { runBlockchainLayer = go
-  }
-  where go =
+cleanup = pure ()
 
 createBlockchainFeature
   :: CardanoEnvironment
@@ -46,10 +66,12 @@ createBlockchainFeature cardanoEnvironment cardanoConfiguration = do
   -- Get the initial chain validation state
   -- Fold
   let
-    feature = CardanoFeature
+    resultVar = _ :: MVar (Either EpochError ())
+    cvs       = _ :: ChainValidationState
+    feature   = CardanoFeature
       { featureName     = "Blockchain"
-      , featureStart    = init
+      , featureStart    = init blockchainConf cvs resultVar
       , featureShutdown = cleanup
       }
-    layer = BlockchainLayer {runBlockchainLayer = todo}
+    layer = BlockchainLayer {blockchainState = readMVar resultVar}
   pure (layer, feature)
