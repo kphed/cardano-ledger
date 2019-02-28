@@ -1,6 +1,7 @@
 {-# LANGUAGE DeriveAnyClass   #-}
 {-# LANGUAGE DeriveGeneric    #-}
 {-# LANGUAGE FlexibleContexts #-}
+{-# LANGUAGE NamedFieldPuns   #-}
 {-# LANGUAGE TupleSections    #-}
 
 -- | Validation of delegation certificates and updating of delegation state
@@ -12,7 +13,8 @@
 module Cardano.Chain.Delegation.Validation
   (
   -- * Scheduling
-    SchedulingState(..)
+    SchedulingEnvironment(..)
+  , SchedulingState(..)
   , SchedulingError(..)
   , ScheduledDelegation(..)
   , scheduleCertificate
@@ -60,12 +62,24 @@ import Cardano.Chain.Slotting
   , subSlotNumber
   )
 import Cardano.Crypto
-  (AProxyVerificationKey(..), PublicKey, pskOmega, validateProxyVerificationKey)
+  ( AProxyVerificationKey(..)
+  , ProtocolMagicId
+  , PublicKey
+  , pskOmega
+  , validateProxyVerificationKey
+  )
 
 
 --------------------------------------------------------------------------------
 -- Scheduling
 --------------------------------------------------------------------------------
+
+data SchedulingEnvironment = SchedulingEnvironment
+  { seGenesisKeys  :: Set StakeholderId
+  , seCurrentEpoch :: EpochIndex
+  , seCurrentSlot  :: FlatSlotId
+  , seLiveness     :: SlotCount
+  }
 
 data SchedulingState = SchedulingState
   { ssScheduledDelegations :: !(Seq ScheduledDelegation)
@@ -103,21 +117,26 @@ data SchedulingError
 --   scheduling inference rule from the ledger specification.
 scheduleCertificate
   :: MonadError SchedulingError m
+<<<<<<< HEAD
   => Genesis.Config
   -> FlatSlotId
   -> EpochSlots
+=======
+  => ProtocolMagicId
+  -> SchedulingEnvironment
+>>>>>>> Add a Hedgehog state machine model for delegation
   -> SchedulingState
   -> ACertificate ByteString
   -> m SchedulingState
-scheduleCertificate config slot d ss cert = do
+scheduleCertificate pm env ss cert = do
 
   -- Check that the delegator is a genesis key
-  (delegator `M.member` genesisStakeholders)
+  (delegator `Set.member` seGenesisKeys)
     `orThrowError` SchedulingNonGenesisDelegator delegator
 
   -- Check that the delegation epoch is greater than or equal to the current one
-  (epoch <= delegationEpoch)
-    `orThrowError` SchedulingPastEpoch epoch delegationEpoch
+  (seCurrentEpoch <= delegationEpoch)
+    `orThrowError` SchedulingPastEpoch seCurrentEpoch delegationEpoch
 
   -- Check that the delegator hasn't already delegated in 'delegationEpoch'
   ((delegationEpoch, delegator) `Set.notMember` ssKeyEpochDelegations ss)
@@ -127,11 +146,15 @@ scheduleCertificate config slot d ss cert = do
 
   -- Check that the delegator hasn't issued a certificate in this slot
   isNothing (Seq.findIndexL delegatesThisSlot (ssScheduledDelegations ss))
-    `orThrowError` SchedulingMultipleDelegationsForSlot slot delegator
+    `orThrowError` SchedulingMultipleDelegationsForSlot seCurrentSlot delegator
 
   -- Check that the delegation certificate is valid
+<<<<<<< HEAD
   validateProxyVerificationKey (configProtocolMagicId config) cert
     `wrapError` SchedulingInvalidCertificate
+=======
+  validateProxySecretKey pm cert `wrapError` SchedulingInvalidCertificate
+>>>>>>> Add a Hedgehog state machine model for delegation
 
   -- Schedule the new delegation and register the epoch/delegator pair
   pure $ SchedulingState
@@ -144,13 +167,12 @@ scheduleCertificate config slot d ss cert = do
   delegator = mkStakeholderId $ pskIssuerPk cert
   delegate  = mkStakeholderId $ pskDelegatePk cert
 
-  genesisStakeholders =
-    getGenesisWStakeholders $ configBootStakeholders config
+  SchedulingEnvironment
+    {seGenesisKeys, seCurrentEpoch, seCurrentSlot, seLiveness} = env
 
-  epoch           = slotNumberEpoch (configEpochSlots config) slot
   delegationEpoch = pskOmega cert
 
-  activationSlot  = addSlotNumber d slot
+  activationSlot  = addSlotNumber seLiveness seCurrentSlot
 
   delegatesThisSlot sd =
     sdSlot sd == activationSlot && sdDelegator sd == delegator
@@ -274,7 +296,7 @@ updateDelegation config slot d is certificates = do
 
   -- Schedule new certificates
   SchedulingState delegations keyEpochs <- foldM
-    (scheduleCertificate config slot d)
+    (scheduleCertificate (configProtocolMagicId config) env)
     (isSchedulingState is)
     certificates
 
@@ -296,3 +318,11 @@ updateDelegation config slot d is certificates = do
       }
 
   pure $ InterfaceState {isSchedulingState = ss', isActivationState = as}
+ where
+  env = SchedulingEnvironment
+    { seGenesisKeys = Set.fromList . M.keys . getGenesisWStakeholders
+      $ configBootStakeholders config
+    , seCurrentEpoch = slotNumberEpoch (configEpochSlots config) slot
+    , seCurrentSlot = slot
+    , seLiveness = d
+    }

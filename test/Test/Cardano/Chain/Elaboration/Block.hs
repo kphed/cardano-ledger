@@ -69,8 +69,10 @@ elaborate config (_, _, pps) ast st ab = Concrete.ABlock
   , Concrete.aBlockExtraData = Binary.Annotated extraBodyData ()
   }
  where
+  pm = Genesis.configProtocolMagicId config
+   
   bh0 = Concrete.mkHeaderExplicit
-    (Genesis.configProtocolMagicId config)
+    pm
     prevHash
     0
     sid
@@ -108,7 +110,7 @@ elaborate config (_, _, pps) ast st ab = Concrete.ABlock
   (_, ssk) = elaborateKeyPair $ vKeyPair issuer
 
   cDCert :: Maybe Delegation.Certificate
-  cDCert = Just $ elaborateDCert config $ rcDCert issuer ast
+  cDCert = Just $ elaborateDCert pm $ rcDCert issuer ast
 
   bb0    = Concrete.ABody
     { Concrete.bodyTxPayload     = Txp.ATxPayload []
@@ -120,7 +122,7 @@ elaborate config (_, _, pps) ast st ab = Concrete.ABlock
   dcerts =
     ab
       ^.. (Abstract.bBody . Abstract.bDCerts . traverse . to
-            (elaborateDCert config)
+            (elaborateDCert pm)
           )
 
 elaborateBS
