@@ -33,7 +33,7 @@ extra-deps:
 
   # Following deps are for cardano-shell
   - git: https://github.com/input-output-hk/cardano-shell
-    commit: dafae58efd9f7eb10adaa665f89baf0989a4e9eb
+    commit: 3abfb900b9082d09d6d658c2b2da5a57d12faaba
 
   - git: https://github.com/input-output-hk/iohk-monitoring-framework
     commit: 95a19ed4b01522793b71968b047c69d832b5663e

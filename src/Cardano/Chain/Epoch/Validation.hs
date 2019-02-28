@@ -27,6 +27,7 @@ import Cardano.Chain.Slotting (SlotId)
 data EpochError
   = EpochParseError ParseError
   | EpochChainValidationError (Maybe SlotId) ChainValidationError
+  | Initial
   deriving (Eq, Show)
 
 

@@ -1,6 +1,7 @@
-{-# LANGUAGE FlexibleContexts  #-}
-{-# LANGUAGE OverloadedStrings #-}
-{-# LANGUAGE RankNTypes        #-}
+{-# LANGUAGE FlexibleContexts    #-}
+{-# LANGUAGE OverloadedStrings   #-}
+{-# LANGUAGE RankNTypes          #-}
+{-# LANGUAGE ScopedTypeVariables #-}
 
 module Cardano.Shell.Features.Blockchain
   ( BlockchainLayer(..)
@@ -10,13 +11,13 @@ where
 
 import Cardano.Prelude
 
-import Control.Monad.Conc.Class (MonadConc)
 import System.FilePath (isExtensionOf, (</>))
 import System.Directory (getDirectoryContents)
 
+import Cardano.Shell.Constants.Types (CardanoConfiguration)
 import Cardano.Shell.Types
-  (CardanoConfiguration, CardanoEnvironment, CardanoFeature(..))
-import Cardano.Chain.Block (ABlock, ChainValidationState)
+  (CardanoEnvironment, CardanoFeature(..))
+import Cardano.Chain.Block (initialChainValidationState, ChainValidationState)
 import Cardano.Chain.Epoch.Validation (validateEpochFile, EpochError)
 import qualified Cardano.Chain.Genesis.Config as Genesis
 
@@ -32,7 +33,7 @@ data BlockchainConfiguration = BlockchainConfiguration
 
 init
   :: forall m
-   . (MonadIO m, MonadConc m)
+   . MonadIO m
   => BlockchainConfiguration
   -> ChainValidationState
   -> MVar (Either EpochError ())
@@ -51,25 +52,40 @@ init config cvs resultVar = do
   liftIO $ putMVar resultVar result
 
 
-cleanup :: forall m . (MonadIO m, MonadConc m) => m ()
+cleanup :: forall m . MonadIO m => m ()
 cleanup = pure ()
+
+-- TODO: We also ignore `CardanoEnvironment` for now.
 
 createBlockchainFeature
   :: CardanoEnvironment
   -> CardanoConfiguration
   -> IO (BlockchainLayer, CardanoFeature)
-createBlockchainFeature cardanoEnvironment cardanoConfiguration = do
-  -- Get the configuration from somewhere
-  -- Get the initial chain validation state
-  -- Fold
+createBlockchainFeature _ _ = do
+  -- Construct `Config` using mainnet-genesis.json
+  -- TODO: Need to populate `CardanoConfiguration` with data from `mainnet-genesis.json`.
+  -- We ignore this parameter for now.
+  config <-
+    either
+        (panic "TODO: Add buildable instance for Genesis.ConfigurationError")
+        identity
+      <$> runExceptT (Genesis.mkConfigFromFile "test/mainnet-genesis.json" Nothing)
+
   resultVar <- newEmptyMVar
-  let
-    resultVar = _ :: MVar (Either EpochError ())
-    cvs       = _ :: ChainValidationState
-    feature   = CardanoFeature
-      { featureName     = "Blockchain"
-      , featureStart    = init blockchainConf cvs resultVar
-      , featureShutdown = cleanup
-      }
-    layer = BlockchainLayer {chainValidationStatus = readMVar resultVar}
-  pure (layer, feature)
+
+  let blockchainConf = BlockchainConfiguration "cardano-mainnet-mirror/epochs" config
+
+  -- Create initial `ChainValidationState`
+  initCVS <- either (panic . show) identity <$> runExceptT (initialChainValidationState config)
+
+  let bcFeature   = CardanoFeature
+        { featureName     = "Blockchain"
+        -- `featureStart` is the logic to be executed of a given feature.
+        , featureStart    = init blockchainConf initCVS resultVar
+        , featureShutdown = cleanup
+        }
+  -- Initialize `BlockchainLayer` with (). This will be updated
+  -- after the feature's logic is executed.
+  let bcLayer = BlockchainLayer {chainValidationStatus = return ()}
+  pure (bcLayer, bcFeature)
+

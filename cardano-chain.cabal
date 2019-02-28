@@ -25,6 +25,7 @@ library
                        Cardano.Chain.Constants
                        Cardano.Chain.Delegation
                        Cardano.Chain.Epoch.File
+                       Cardano.Chain.Epoch.Validation
                        Cardano.Chain.Genesis
                        Cardano.Chain.ProtocolConstants
                        Cardano.Chain.Slotting
@@ -66,8 +67,6 @@ library
                        Cardano.Chain.Delegation.Payload
                        Cardano.Chain.Delegation.Undo
                        Cardano.Chain.Delegation.Validation
-
-                       Cardano.Chain.Epoch.Validation
 
                        Cardano.Chain.Genesis.AvvmBalances
                        Cardano.Chain.Genesis.Config
@@ -158,6 +157,27 @@ library
 
   if (!flag(development))
     ghc-options:         -Werror
+
+executable cardano-blockchain-exe
+  main-is: Main.hs
+  hs-source-dirs:
+      app
+  build-depends:
+      base >=4.7 && <5
+    , cardano-chain
+    , cardano-shell
+    , cardano-prelude
+
+  default-language:    Haskell2010
+  default-extensions:  NoImplicitPrelude
+
+  ghc-options:         -Wall
+                       -Werror
+                       -Wcompat
+                       -Wincomplete-record-updates
+                       -Wincomplete-uni-patterns
+                       -Wredundant-constraints
+                       -Wpartial-fields
 
 test-suite cardano-chain-test
   hs-source-dirs:      test
