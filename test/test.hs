@@ -21,6 +21,7 @@ import qualified Test.Cardano.Chain.Slotting.Properties
 import qualified Test.Cardano.Chain.Ssc.Bi
 import qualified Test.Cardano.Chain.Txp.Bi
 import qualified Test.Cardano.Chain.Txp.Json
+import qualified Test.Cardano.Chain.Txp.Model
 import qualified Test.Cardano.Chain.Txp.Validation
 import qualified Test.Cardano.Chain.Update.Bi
 import qualified Test.Cardano.Chain.Update.Json
@@ -43,6 +44,7 @@ main = do
     , Test.Cardano.Chain.Ssc.Bi.tests
     , Test.Cardano.Chain.Txp.Bi.tests
     , Test.Cardano.Chain.Txp.Json.tests
+    , Test.Cardano.Chain.Txp.Model.tests
     , Test.Cardano.Chain.Txp.Validation.tests scenario
     , Test.Cardano.Chain.Update.Bi.tests
     , Test.Cardano.Chain.Update.Json.tests

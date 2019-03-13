@@ -1,6 +1,7 @@
 {-# LANGUAGE DataKinds         #-}
 {-# LANGUAGE FlexibleContexts  #-}
 {-# LANGUAGE LambdaCase        #-}
+{-# LANGUAGE NamedFieldPuns    #-}
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE RankNTypes        #-}
 {-# LANGUAGE TypeApplications  #-}
@@ -10,6 +11,7 @@ module Cardano.Chain.Txp.Validation
   , updateUTxO
   , updateUTxOWitness
   , TxValidationError
+  , Environment(..)
   , UTxOValidationError
   )
 where
@@ -30,7 +32,6 @@ import Cardano.Chain.Common
   , Lovelace
   , LovelaceError
   , TxFeePolicy(..)
-  , TxSizeLinear(..)
   , calculateTxSizeLinear
   , checkPubKeyAddress
   , checkRedeemAddress
@@ -44,6 +45,7 @@ import Cardano.Chain.Txp.TxWitness
 import Cardano.Chain.Txp.UTxO
   (UTxO, UTxOError, balance, isRedeemUTxO, txOutputUTxO, (</|), (<|))
 import qualified Cardano.Chain.Txp.UTxO as UTxO
+import Cardano.Chain.Update.ProtocolParameters (ProtocolParameters(..))
 import Cardano.Crypto
   (ProtocolMagicId, SignTag(..), verifySignatureDecoded, verifyRedeemSigDecoded)
 
@@ -136,6 +138,10 @@ validateWitness pm sigData addr witness = case witness of
       `orThrowError` TxValidationInvalidWitness witness
 
 
+data Environment = Environment
+  { envProtocolParameters :: ProtocolParameters
+  } deriving (Eq, Show)
+
 data UTxOValidationError
   = UTxOValidationTxValidationError TxValidationError
   | UTxOValidationUTxOError UTxOError
@@ -143,28 +149,28 @@ data UTxOValidationError
 
 
 -- | Validate a transaction and use it to update the 'UTxO'
-updateUTxO :: MonadError UTxOValidationError m => UTxO -> Tx -> m UTxO
-updateUTxO utxo tx = do
+updateUTxO
+  :: MonadError UTxOValidationError m => Environment -> UTxO -> Tx -> m UTxO
+updateUTxO env utxo tx = do
 
-  validateTx hardcodedTxFeePolicy utxo tx
+  validateTx (ppTxFeePolicy envProtocolParameters) utxo tx
     `wrapError` UTxOValidationTxValidationError
 
   UTxO.union (S.fromList (NE.toList (_txInputs tx)) </| utxo) (txOutputUTxO tx)
     `wrapError` UTxOValidationUTxOError
  where
-
-  hardcodedTxFeePolicy = TxFeePolicyTxSizeLinear
-    $ TxSizeLinear (mkKnownLovelace @155381) (mkKnownLovelace @44)
+   Environment {envProtocolParameters} = env
 
 
 -- | Validate a transaction with a witness and use it to update the 'UTxO'
 updateUTxOWitness
   :: MonadError UTxOValidationError m
   => ProtocolMagicId
+  -> Environment
   -> UTxO
   -> ATxAux ByteString
   -> m UTxO
-updateUTxOWitness pm utxo ta = do
+updateUTxOWitness pm env utxo ta = do
   let
     tx      = taTx ta
     witness = taWitness ta
@@ -183,4 +189,4 @@ updateUTxOWitness pm utxo ta = do
     `wrapError` UTxOValidationTxValidationError
 
   -- Update 'UTxO' ignoring witnesses
-  updateUTxO utxo tx
+  updateUTxO env utxo tx

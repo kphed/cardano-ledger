@@ -11,6 +11,7 @@ module Test.Cardano.Chain.Elaboration.Block
   ( abEnvToCfg
   , elaborate
   , elaborateBS
+  , rcDCert
   )
 where
 
@@ -40,7 +41,7 @@ import Cardano.Spec.Chain.STS.Rule.Chain (CHAIN, disL, epochL)
 import qualified Cardano.Spec.Chain.STS.Block as Abstract
 import qualified Ledger.Core as Abstract
 import Ledger.Delegation (DCert, delegationMap, delegatorOf, mkDCert)
-import Ledger.Update (bkSgnCntW, bkSlotsPerEpoch, maxBkSz, maxHdrSz)
+import Ledger.Update (bkSlotsPerEpoch, maxBkSz, maxHdrSz, stableAfter)
 import Cardano.Chain.Common
   ( BlockCount(BlockCount)
   , LovelacePortion(LovelacePortion)
@@ -59,27 +60,20 @@ import Test.Cardano.Chain.Elaboration.Delegation (elaborateDCert)
 elaborate
   :: Genesis.Config
   -> Transition.Environment CHAIN
-  -> Transition.State CHAIN
+  -> Maybe DCert
   -> Concrete.ChainValidationState
   -> Abstract.Block
   -> Concrete.ABlock ()
-elaborate config (_, _, pps) ast st ab = Concrete.ABlock
+elaborate config (_, _, pps) dCert st ab = Concrete.ABlock
   { Concrete.blockHeader     = bh0
   , Concrete.blockBody       = bb0
   , Concrete.aBlockExtraData = Binary.Annotated extraBodyData ()
   }
  where
   pm = Genesis.configProtocolMagicId config
-   
-  bh0 = Concrete.mkHeaderExplicit
-    pm
-    prevHash
-    0
-    sid
-    ssk
-    cDCert
-    bb0
-    extraHeaderData
+
+  bh0 =
+    Concrete.mkHeaderExplicit pm prevHash 0 sid ssk cDCert bb0 extraHeaderData
 
   emptyAttrs      = Common.mkAttributes ()
 
@@ -103,14 +97,14 @@ elaborate config (_, _, pps) ast st ab = Concrete.ABlock
   sid =
     Slotting.unflattenSlotId (coerce (pps ^. bkSlotsPerEpoch))
       $ Slotting.FlatSlotId
-          (ab ^. Abstract.bHeader . Abstract.bSlot . to Abstract.unSlot)
+          (ab ^. Abstract.bHeader . Abstract.bhSlot . to Abstract.unSlot)
 
-  issuer   = ab ^. Abstract.bHeader . Abstract.bIssuer
+  issuer   = ab ^. Abstract.bHeader . Abstract.bhIssuer
 
   (_, ssk) = elaborateKeyPair $ vKeyPair issuer
 
   cDCert :: Maybe Delegation.Certificate
-  cDCert = Just $ elaborateDCert pm $ rcDCert issuer ast
+  cDCert = elaborateDCert pm <$> dCert
 
   bb0    = Concrete.ABody
     { Concrete.bodyTxPayload     = Txp.ATxPayload []
@@ -130,12 +124,12 @@ elaborateBS
                     -- environment? (in such case we wouldn't need this
                     -- parameter)
   -> Transition.Environment CHAIN
-  -> Transition.State CHAIN
+  -> Maybe DCert
   -> Concrete.ChainValidationState
   -> Abstract.Block
   -> Concrete.ABlock ByteString
-elaborateBS config aenv ast st ab =
-  annotateBlock $ elaborate config aenv ast st ab
+elaborateBS config aenv dCert st ab =
+  annotateBlock $ elaborate config aenv dCert st ab
 
 annotateBlock :: Concrete.Block -> Concrete.ABlock ByteString
 annotateBlock block =
@@ -165,8 +159,10 @@ rcDCert
   :: Abstract.VKey
   -- ^ Key for which the delegation certificate is being constructed.
   -> Transition.State CHAIN
-  -> DCert
-rcDCert vk ast = mkDCert vkg sigVkg vk (ast ^. epochL)
+  -> Maybe DCert
+rcDCert vk ast = if coerce vkg == vk
+  then Nothing
+  else Just $ mkDCert vkg sigVkg vk (ast ^. epochL)
  where
   dm :: Map Abstract.VKeyGenesis Abstract.VKey
   dm  = ast ^. disL . delegationMap
@@ -180,8 +176,8 @@ rcDCert vk ast = mkDCert vkg sigVkg vk (ast ^. epochL)
 
   sigVkg = Abstract.sign (Abstract.sKey vkp) vkg
 
---  | Make a genesis configuration from an initial abstract environment of the
---  | trace.
+-- | Make a genesis configuration from an initial abstract environment of the
+--   trace.
 --
 abEnvToCfg :: Transition.Environment CHAIN -> Genesis.Config
 abEnvToCfg (_, vkgs, pps) = Genesis.Config genesisData genesisHash Nothing
@@ -193,11 +189,11 @@ abEnvToCfg (_, vkgs, pps) = Genesis.Config genesisData genesisHash Nothing
     , Genesis.gdStartTime = UTCTime (ModifiedJulianDay 0) 0
     , Genesis.gdNonAvvmBalances = Genesis.GenesisNonAvvmBalances []
     , Genesis.gdProtocolParameters = gPps
-    , Genesis.gdK         =
+    , Genesis.gdK =
         -- TODO: this should be a different protocol parameter once we have
         -- an abstract protocol parameter for k. Then we need to solve the
         -- problem that in the concrete implementation k and w are the same.
-                            BlockCount (fromIntegral $ pps ^. bkSgnCntW)
+                    BlockCount (Abstract.unBlockCount $ pps ^. stableAfter)
     , Genesis.gdProtocolMagic = dummyProtocolMagic
     , Genesis.gdAvvmDistr = Genesis.GenesisAvvmBalances []
     }

@@ -29,6 +29,7 @@ import Cardano.Chain.Slotting
   , FlatSlotId(..)
   , EpochSlots(..)
   , LocalSlotIndex(..)
+  , SlotCount(..)
   , flattenSlotId
   , unflattenSlotId
   , mkSlottingData
@@ -44,6 +45,7 @@ import Test.Cardano.Chain.Slotting.Gen
   ( genFlatSlotId
   , genLocalSlotIndex
   , genLsiEpochSlots
+  , genSlotCount
   , genSlotId
   , genConsistentSlotIdEpochSlots
   , genSlottingData
@@ -235,18 +237,18 @@ prop_flattenUnflattenSlotId = withTests 100 . property $ do
 -- Check that `addSlotNumber` actually adds.
 prop_addSlotNumber :: Property
 prop_addSlotNumber = withTests 100 . property $ do
-  sc <- forAll genLsiEpochSlots
+  sc <- forAll genSlotCount
   fs <- forAll genFlatSlotId
-  let added = fs + (FlatSlotId $ unEpochSlots sc)
+  let added = fs + (FlatSlotId $ unSlotCount sc)
   addSlotNumber sc fs === added
 
 -- Check that `addSlotNumber` actually subtracts.
 prop_subSlotNumber :: Property
 prop_subSlotNumber = withTests 100 . property $ do
-  sc <- forAll genLsiEpochSlots
+  sc <- forAll genSlotCount
   fs <- forAll genFlatSlotId
-  let subtracted = fs - (FlatSlotId $ unEpochSlots sc)
-  (subSlotNumber sc fs) === subtracted
+  let subtracted = fs - (FlatSlotId $ unSlotCount sc)
+  subSlotNumber sc fs === subtracted
 
 tests :: IO Bool
-tests = checkSequential $$(discover)
+tests = checkSequential $$discover

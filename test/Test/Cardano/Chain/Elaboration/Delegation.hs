@@ -16,10 +16,9 @@ import Hedgehog
 
 import Cardano.Binary.Class (Annotated(..), serialize')
 import Cardano.Chain.Common (mkStakeholderId)
-import qualified Cardano.Chain.Delegation as Delegation
-import qualified Cardano.Chain.Delegation.Validation as Concrete
+import qualified Cardano.Chain.Delegation as Concrete
 import qualified Cardano.Chain.Genesis as Genesis
-import Cardano.Chain.Slotting (EpochIndex)
+import qualified Cardano.Chain.Slotting as Concrete
 import Cardano.Crypto (ProtocolMagicId)
 import Cardano.Crypto.Signing
   ( AProxyVerificationKey(..)
@@ -29,11 +28,18 @@ import Cardano.Crypto.Signing
   , validateProxyVerificationKey
   )
 import Ledger.Core
-  (Epoch(..), Owner(..), Slot(..), SlotCount(..), VKey(..), VKeyGenesis(..))
+  ( BlockCount(..)
+  , Epoch(..)
+  , Owner(..)
+  , Slot(..)
+  , VKey(..)
+  , VKeyGenesis(..)
+  )
 import Ledger.Delegation (DCert(..), DSEnv(..), dcertGen, delegate, delegator)
 
 import Test.Cardano.Chain.Config (readMainetCfg)
-import Test.Cardano.Chain.Elaboration.Keys (elaborateKeyPair, elaborateVKeyGenesis, vKeyPair)
+import Test.Cardano.Chain.Elaboration.Keys
+  (elaborateKeyPair, elaborateVKeyGenesis, vKeyPair)
 
 tests :: IO Bool
 tests = checkSequential $$discover
@@ -48,7 +54,7 @@ prop_elaboratedCertsValid =
         let pm = Genesis.configProtocolMagicId config
 
         -- Generate and elaborate a certificate
-        cert   <- forAll $ elaborateDCertAnnotated pm <$> dcertGen env
+        cert <- forAll $ elaborateDCertAnnotated pm <$> dcertGen env
 
         -- Validate the certificate
         evalEither $ validateProxyVerificationKey pm cert
@@ -57,13 +63,13 @@ prop_elaboratedCertsValid =
     { _dSEnvAllowedDelegators = Set.fromList
       . fmap (VKeyGenesis . VKey . Owner)
       $ [0 .. 6]
-    , _dSEnvEpoch    = Epoch 0
-    , _dSEnvSlot     = Slot 0
-    , _dSEnvLiveness = SlotCount 20
+    , _dSEnvEpoch       = Epoch 0
+    , _dSEnvSlot        = Slot 0
+    , _dSEnvStableAfter = BlockCount 20
     }
 
 
-elaborateDCert :: ProtocolMagicId -> DCert -> Delegation.Certificate
+elaborateDCert :: ProtocolMagicId -> DCert -> Concrete.Certificate
 elaborateDCert pm cert = createPsk
   pm
   (noPassSafeSigner delegatorSK)
@@ -76,27 +82,29 @@ elaborateDCert pm cert = createPsk
 
   Epoch e = _depoch cert
 
-  epochIndex :: EpochIndex
+  epochIndex :: Concrete.EpochIndex
   epochIndex = fromIntegral e
 
 
-elaborateDCertAnnotated :: ProtocolMagicId -> DCert -> Delegation.ACertificate ByteString
+elaborateDCertAnnotated
+  :: ProtocolMagicId -> DCert -> Concrete.ACertificate ByteString
 elaborateDCertAnnotated pm = annotateDCert . elaborateDCert pm
  where
-  annotateDCert
-    :: Delegation.Certificate
-    -> Delegation.ACertificate ByteString
-  annotateDCert cert = cert { aPskOmega = Annotated omega (serialize' omega) }
+  annotateDCert :: Concrete.Certificate -> Concrete.ACertificate ByteString
+  annotateDCert cert = cert
+    { aPskOmega = Annotated omega (serialize' omega)
+    }
     where omega = pskOmega cert
 
 
 elaborateDSEnv :: DSEnv -> Concrete.SchedulingEnvironment
 elaborateDSEnv abstractEnv = Concrete.SchedulingEnvironment
-  { Concrete.seGenesisKeys  = Set.fromList $
-      mkStakeholderId . elaborateVKeyGenesis <$> Set.toList genesisKeys
+  { Concrete.seGenesisKeys  = Set.fromList
+    $   mkStakeholderId
+    .   elaborateVKeyGenesis
+    <$> Set.toList genesisKeys
   , Concrete.seCurrentEpoch = fromIntegral e
-  , Concrete.seCurrentSlot  = s
-  , Concrete.seLiveness     = fromIntegral d
+  , Concrete.seCurrentSlot  = Concrete.FlatSlotId s
+  , Concrete.seStableAfter  = Concrete.SlotCount d
   }
- where
-  DSEnv genesisKeys (Epoch e) (Slot s) (SlotCount d) = abstractEnv
+  where DSEnv genesisKeys (Epoch e) (Slot s) (BlockCount d) = abstractEnv

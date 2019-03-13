@@ -4,7 +4,9 @@
 module Cardano.Chain.Txp.UTxO
   ( UTxO
   , UTxOError
+  , empty
   , fromList
+  , fromBalances
   , member
   , lookupAddress
   , union
@@ -16,8 +18,9 @@ module Cardano.Chain.Txp.UTxO
   )
 where
 
-import Cardano.Prelude
+import Cardano.Prelude hiding (empty)
 
+import Data.Coerce
 import qualified Data.List.NonEmpty as NE
 import qualified Data.Map.Strict as M
 
@@ -29,15 +32,26 @@ import Cardano.Crypto (hash)
 
 newtype UTxO = UTxO
   { unUTxO :: Map TxIn TxOut
-  } deriving HeapWords
+  } deriving (Eq, Show, HeapWords)
 
 data UTxOError
   = UTxOMissingInput TxIn
   | UTxOOverlappingUnion
   deriving (Eq, Show)
 
+empty :: UTxO
+empty = UTxO mempty
+
 fromList :: [(TxIn, TxOut)] -> UTxO
 fromList = UTxO . M.fromList
+
+-- | Create a 'UTxO' from a list of initial balances
+fromBalances :: [(Address, Lovelace)] -> UTxO
+fromBalances = fromList . fmap utxoEntry
+ where
+  utxoEntry :: (Address, Lovelace) -> (TxIn, TxOut)
+  utxoEntry (addr, lovelace) =
+    (TxInUtxo (coerce $ hash addr) 0, TxOut addr lovelace)
 
 member :: TxIn -> UTxO -> Bool
 member txIn = M.member txIn . unUTxO

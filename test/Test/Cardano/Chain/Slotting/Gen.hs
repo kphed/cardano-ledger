@@ -8,8 +8,9 @@ module Test.Cardano.Chain.Slotting.Gen
   , genSlottingDataInvalidIndicies
   , genFlatSlotId
   , genLocalSlotIndex
-  , genLsiEpochSlots
   , genEpochSlots
+  , genLsiEpochSlots
+  , genSlotCount
   , genSlotId
   , genConsistentSlotIdEpochSlots
   , genSlottingData
@@ -33,6 +34,7 @@ import Cardano.Chain.Slotting
   , FlatSlotId(..)
   , LocalSlotIndex
   , EpochSlots(..)
+  , SlotCount(..)
   , SlotId(..)
   , SlottingData
   , unLocalSlotIndex
@@ -49,13 +51,6 @@ import Test.Cardano.Crypto.Gen (genProtocolMagicId)
 
 genEpochIndex :: Gen EpochIndex
 genEpochIndex = EpochIndex <$> Gen.word64 Range.constantBounded
-
--- Generates a `EpochSlots` based on `LocalSlotIndex`
-genLsiEpochSlots :: Gen EpochSlots
-genLsiEpochSlots = EpochSlots <$> Gen.word64 (Range.linear 1 w16Max)
- where
-  w16Max :: Word64
-  w16Max = fromIntegral (maxBound :: Word16)
 
 genEpochSlottingData :: Gen EpochSlottingData
 genEpochSlottingData =
@@ -76,10 +71,18 @@ genLocalSlotIndex epochSlots = mkLocalSlotIndex'
       err
     Right lsi -> lsi
 
--- Restricted to upper bound of `Word16` because `mkLocalSlotIndex`
--- creates a `LocalSlotIndex` which is limited to a `Word16`.
 genEpochSlots :: Gen EpochSlots
 genEpochSlots = EpochSlots <$> Gen.word64 Range.constantBounded
+
+-- Generates a `EpochSlots` based on `LocalSlotIndex`
+genLsiEpochSlots :: Gen EpochSlots
+genLsiEpochSlots = EpochSlots <$> Gen.word64 (Range.linear 1 w16Max)
+ where
+  w16Max :: Word64
+  w16Max = fromIntegral (maxBound :: Word16)
+
+genSlotCount :: Gen SlotCount
+genSlotCount = SlotCount <$> Gen.word64 Range.constantBounded
 
 genSlotId :: EpochSlots -> Gen SlotId
 genSlotId epochSlots =

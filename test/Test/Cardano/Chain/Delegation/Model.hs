@@ -1,10 +1,11 @@
-{-# LANGUAGE DataKinds #-}
-{-# LANGUAGE KindSignatures #-}
+{-# LANGUAGE DataKinds           #-}
+{-# LANGUAGE KindSignatures      #-}
+{-# LANGUAGE NamedFieldPuns      #-}
 {-# LANGUAGE ScopedTypeVariables #-}
-{-# LANGUAGE TypeApplications #-}
+{-# LANGUAGE TypeApplications    #-}
 
 module Test.Cardano.Chain.Delegation.Model
-  ( prop_ScheduleDelegationModel
+  ( prop_commandSDELEG
   )
 where
 
@@ -17,90 +18,101 @@ import Hedgehog
 import qualified Hedgehog.Gen as Gen
 import qualified Hedgehog.Range as Range
 
-import qualified Cardano.Chain.Delegation.Validation as Concrete
-import qualified Control.State.Transition as Abstract
-import qualified Control.State.Transition.Generator as Abstract
+import qualified Cardano.Chain.Delegation as Concrete
+import qualified Control.State.Transition as STS
+import qualified Control.State.Transition.Generator as STS
+import Ledger.Delegation (DELEG, SDELEG)
 import qualified Ledger.Delegation as Abstract
 
 import Test.Cardano.Chain.Elaboration.Delegation
 import Test.Cardano.Crypto.Dummy (dummyProtocolMagicId)
 
 
-prop_ScheduleDelegationModel :: Property
-prop_ScheduleDelegationModel = withTests 25 . property $ do
+--------------------------------------------------------------------------------
+-- CHAIN
+--------------------------------------------------------------------------------
+
+prop_commandSDELEG :: Property
+prop_commandSDELEG = withTests 25 . property $ do
   concreteRef <- liftIO $ newIORef initialConcreteState
 
-  abstractEnv <- forAll $ Abstract.initEnvGen @Abstract.DELEG
+  abstractEnv <- forAll $ STS.initEnvGen @DELEG
 
-  actions <- forAll $ Gen.sequential
+  actions     <- forAll $ Gen.sequential
     (Range.linear 1 20)
     initialState
-    [commandScheduleDelegation concreteRef abstractEnv]
+    [commandSDELEG concreteRef abstractEnv]
 
-  liftIO (cleanup concreteRef) >> executeSequential initialState actions
+  cleanup concreteRef >> executeSequential initialState actions
  where
   initialConcreteState = Concrete.SchedulingState mempty mempty
 
-  cleanup = flip writeIORef initialConcreteState
+  cleanup :: IORef Concrete.SchedulingState -> PropertyT IO ()
+  cleanup = liftIO . flip writeIORef initialConcreteState
 
 
-newtype ScheduleDelegationState (v :: Type -> Type)
-  = ScheduleDelegationState Abstract.DSState
+data StateSDELEG (v :: Type -> Type) = StateSDELEG
+  { abstractState      :: Abstract.DSState
+  , lastAbstractResult :: Either [STS.PredicateFailure SDELEG] (STS.State SDELEG)
+  }
 
-initialState :: ScheduleDelegationState v
-initialState = ScheduleDelegationState $ Abstract.DSState
-  []
-  mempty
+initialState :: StateSDELEG v
+initialState = StateSDELEG initialAbstractState (Right initialAbstractState)
+  where initialAbstractState = Abstract.DSState [] mempty
 
 
-data ScheduleDelegation (v :: Type -> Type)
-  = ScheduleDelegation Abstract.DCert
+newtype SignalSDELEG (v :: Type -> Type)
+  = SignalSDELEG (STS.Signal SDELEG)
   deriving Show
 
-instance HTraversable ScheduleDelegation where
+instance HTraversable SignalSDELEG where
   htraverse _ s = pure (coerce s)
 
 
 -- TODO: Change dcertGen to use 'MonadGen'
-commandScheduleDelegation
+commandSDELEG
   :: forall m
    . MonadIO m
   => IORef Concrete.SchedulingState
-  -> Abstract.DSEnv
-  -> Command Gen m ScheduleDelegationState
-commandScheduleDelegation concreteRef abstractEnv = Command gen execute callbacks
+  -> STS.Environment SDELEG
+  -> Command Gen m StateSDELEG
+commandSDELEG concreteRef abstractEnv = Command gen execute callbacks
  where
-  gen :: ScheduleDelegationState v -> Maybe (Gen (ScheduleDelegation v))
-  gen _ = Just $ ScheduleDelegation <$> Abstract.dcertGen abstractEnv
+  gen :: StateSDELEG v -> Maybe (Gen (SignalSDELEG v))
+  gen _ = Just $ SignalSDELEG <$> Abstract.dcertGen abstractEnv
 
   execute
-    :: ScheduleDelegation v
+    :: SignalSDELEG v
     -> m (Either Concrete.SchedulingError Concrete.SchedulingState)
-  execute (ScheduleDelegation cert) = do
+  execute (SignalSDELEG cert) = do
     concreteState <- liftIO $ readIORef concreteRef
 
     let
       result :: Either Concrete.SchedulingError Concrete.SchedulingState
       result = Concrete.scheduleCertificate
-          dummyProtocolMagicId
-          (elaborateDSEnv abstractEnv)
-          concreteState
-          (elaborateDCertAnnotated dummyProtocolMagicId cert)
+        dummyProtocolMagicId
+        (elaborateDSEnv abstractEnv)
+        concreteState
+        (elaborateDCertAnnotated dummyProtocolMagicId cert)
 
-    either (const $ pure ()) (liftIO . writeIORef concreteRef) result
+    liftIO . writeIORef concreteRef $ fromRight concreteState result
 
     pure result
 
-  callbacks :: [Callback ScheduleDelegation (Either a b) ScheduleDelegationState]
+  callbacks
+    :: [ Callback
+           SignalSDELEG
+           (Either Concrete.SchedulingError Concrete.SchedulingState)
+           StateSDELEG
+       ]
   callbacks =
-    [ Update $ \(ScheduleDelegationState s) (ScheduleDelegation cert) _ ->
-        ScheduleDelegationState $
-          case Abstract.applySTS @Abstract.SDELEG (Abstract.TRC (abstractEnv, s, cert)) of
-            Left _ -> s
-            Right s' -> s'
-    , Ensure $ \(ScheduleDelegationState s) _ (ScheduleDelegation cert) result ->
-        let abstractResult = Abstract.applySTS
-              @Abstract.SDELEG
-              (Abstract.TRC (abstractEnv, s, cert))
-        in isRight result === isRight abstractResult
+    [ Update $ \StateSDELEG { abstractState } (SignalSDELEG cert) _ ->
+      let
+        result =
+          STS.applySTS @SDELEG (STS.TRC (abstractEnv, abstractState, cert))
+      in StateSDELEG (fromRight abstractState result) result
+    , Ensure $ \_ StateSDELEG { lastAbstractResult } _ result -> do
+      annotateShow lastAbstractResult
+      annotateShow result
+      isRight lastAbstractResult === isRight result
     ]

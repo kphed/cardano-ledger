@@ -47,7 +47,7 @@ import Control.State.Transition (State)
 import Control.State.Transition.Trace
   (TraceOrder(OldestFirst), Trace, preStatesAndSignals, traceEnv)
 
-import Test.Cardano.Chain.Elaboration.Block (elaborateBS, abEnvToCfg)
+import Test.Cardano.Chain.Elaboration.Block (elaborateBS, abEnvToCfg, rcDCert)
 
 tests :: IO Bool
 tests = checkParallel $$discover
@@ -73,8 +73,10 @@ passConcreteValidation tr = void $ evalEither res
   elaborateAndUpdate cst (ast, ab) = updateChain
     config
     cst
-    (elaborateBS config aenv ast cst ab)
-    where aenv = tr ^. traceEnv
+    (elaborateBS config aenv dCert cst ab)
+   where
+    aenv  = tr ^. traceEnv
+    dCert = rcDCert (ab ^. Abstract.bHeader . Abstract.bhIssuer) ast
 
   initSt =
     either (panic . show) identity $ initialChainValidationState config
