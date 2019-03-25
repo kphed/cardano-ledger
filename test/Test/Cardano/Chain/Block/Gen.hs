@@ -83,7 +83,7 @@ genHeader pm epochSlots =
   mkHeaderExplicit pm
     <$> genHeaderHash
     <*> genChainDifficulty
-    <*> genSlotId epochSlots
+    <*> genFlatSlotId -- TODO: here we're not using the epochSlots anymore? What are the implications?
     <*> genSecretKey
     <*> pure Nothing
     <*> genBody pm
@@ -92,7 +92,7 @@ genHeader pm epochSlots =
 genConsensusData :: ProtocolMagicId -> EpochSlots -> Gen ConsensusData
 genConsensusData pm epochSlots =
   consensusData
-    <$> genSlotId epochSlots
+    <$> genFlatSlotId -- TODO: here we're not using the epochSlots anymore? What are the implications?
     <*> genPublicKey
     <*> genChainDifficulty
     <*> genBlockSignature pm epochSlots

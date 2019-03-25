@@ -76,7 +76,7 @@ import Test.Cardano.Chain.Block.Gen
 import Test.Cardano.Chain.Common.Example (exampleChainDifficulty)
 import Test.Cardano.Chain.Delegation.Example (exampleCertificates)
 import qualified Test.Cardano.Chain.Delegation.Example as Delegation
-import Test.Cardano.Chain.Slotting.Example (exampleSlotId)
+import Test.Cardano.Chain.Slotting.Example (exampleSlotId, exampleFlatSlotId)
 import Test.Cardano.Chain.Slotting.Gen (feedPMEpochSlots)
 import Test.Cardano.Chain.Txp.Example
   (exampleTxPayload, exampleTxProof, exampleTxpUndo)
@@ -225,7 +225,7 @@ goldenConsensusData :: Property
 goldenConsensusData = goldenTestBi mcd "test/golden/bi/block/ConsensusData"
  where
   mcd = consensusData
-    exampleSlotId
+    exampleFlatSlotId
     examplePublicKey
     exampleChainDifficulty
     exampleBlockSignature
@@ -302,7 +302,7 @@ exampleHeader = mkHeaderExplicit
   (ProtocolMagicId 7)
   exampleHeaderHash
   exampleChainDifficulty
-  exampleSlotId
+  exampleFlatSlotId
   exampleSecretKey
   Nothing
   exampleBody
@@ -326,7 +326,7 @@ exampleBlockPSignatureHeavy = BlockPSignatureHeavy sig
 
 exampleConsensusData :: ConsensusData
 exampleConsensusData = consensusData
-  exampleSlotId
+  exampleFlatSlotId
   examplePublicKey
   exampleChainDifficulty
   exampleBlockSignature

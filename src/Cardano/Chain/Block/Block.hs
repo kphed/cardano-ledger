@@ -86,6 +86,7 @@ import Cardano.Chain.Block.Header
   , ToSign
   , decodeAHeader
   , dropBoundaryHeader
+  , epochAndSlotCount -- TODO: put this in the right module. Might not be needed after the refactoring is complete.
   , genesisHeaderHash
   , hashHeader
   , headerAttributes
@@ -106,7 +107,7 @@ import Cardano.Chain.Block.Proof (Proof(..))
 import Cardano.Chain.Common (Attributes, ChainDifficulty (..), mkAttributes)
 import qualified Cardano.Chain.Delegation as Delegation
 import Cardano.Chain.Genesis.Hash (GenesisHash(..))
-import Cardano.Chain.Slotting (SlotId(..))
+import Cardano.Chain.Slotting (SlotId(..), EpochSlots(EpochSlots), flattenSlotId)
 import Cardano.Chain.Ssc (SscPayload)
 import Cardano.Chain.Txp.TxPayload (ATxPayload)
 import Cardano.Chain.Update.ProtocolVersion (ProtocolVersion)
@@ -268,7 +269,7 @@ mkBlockExplicit
   -> Body
   -> Block
 mkBlockExplicit pm bv sv prevHash difficulty slotId sk mDlgCert body = ABlock
-  (mkHeaderExplicit pm prevHash difficulty slotId sk mDlgCert body extraH)
+  (mkHeaderExplicit pm prevHash difficulty fsid sk mDlgCert body extraH)
   body
   (Annotated extraB ())
   ()
@@ -277,6 +278,11 @@ mkBlockExplicit pm bv sv prevHash difficulty slotId sk mDlgCert body = ABlock
   extraB = ExtraBodyData (mkAttributes ())
   extraH :: ExtraHeaderData
   extraH = ExtraHeaderData bv sv (mkAttributes ()) (hash extraB)
+
+  -- TODO: for now we hardcode the number of slots per epoch. See 'epochAndSlotCount'
+  -- for details on how we'd want to do this properly.
+  fsid = flattenSlotId (EpochSlots 21600) slotId
+
 
 --------------------------------------------------------------------------------
 -- Block accessors
@@ -298,7 +304,7 @@ blockProof :: ABlock a -> Proof
 blockProof = headerProof . blockHeader
 
 blockSlot :: ABlock a -> SlotId
-blockSlot = headerSlot . blockHeader
+blockSlot = epochAndSlotCount . headerSlot . blockHeader
 
 blockLeaderKey :: ABlock a -> PublicKey
 blockLeaderKey = headerLeaderKey . blockHeader

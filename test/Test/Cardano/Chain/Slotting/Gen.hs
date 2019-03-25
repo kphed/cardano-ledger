@@ -76,8 +76,8 @@ genLocalSlotIndex epochSlots = mkLocalSlotIndex'
       err
     Right lsi -> lsi
 
--- Restricted to upper bound of `Word16` because `mkLocalSlotIndex`
--- creates a `LocalSlotIndex` which is limited to a `Word16`.
+-- Restricted to upper bound of `Word64` because `mkLocalSlotIndex`
+-- creates a `LocalSlotIndex` which is limited to a `Word64`.
 genEpochSlots :: Gen EpochSlots
 genEpochSlots = EpochSlots <$> Gen.word64 Range.constantBounded
 

@@ -6,6 +6,7 @@
 {-# LANGUAGE FlexibleInstances    #-}
 {-# LANGUAGE LambdaCase           #-}
 {-# LANGUAGE OverloadedStrings    #-}
+{-# LANGUAGE ScopedTypeVariables  #-}
 {-# LANGUAGE TypeApplications     #-}
 {-# LANGUAGE TypeFamilies         #-}
 {-# LANGUAGE TypeSynonymInstances #-}
@@ -51,6 +52,7 @@ module Cardano.Chain.Block.Header
 
   -- * Utility functions
   , genesisHeaderHash
+  , epochAndSlotCount -- TODO: we might want to place this in a different location, or replace by a better function
   )
 where
 
@@ -88,7 +90,15 @@ import Cardano.Chain.Block.Proof (Proof(..), mkProof)
 import Cardano.Chain.Common (Attributes, ChainDifficulty (..))
 import qualified Cardano.Chain.Delegation.Certificate as Delegation
 import Cardano.Chain.Genesis.Hash (GenesisHash(..))
-import Cardano.Chain.Slotting (EpochIndex, SlotId(..), slotIdF)
+import Cardano.Chain.Slotting
+  ( EpochIndex
+  , EpochSlots(EpochSlots)
+  , FlatSlotId(..)
+  , SlotId(..)
+  , slotIdF
+  , unflattenSlotId
+  , flattenSlotId
+  )
 import Cardano.Chain.Update.ProtocolVersion (ProtocolVersion)
 import Cardano.Chain.Update.SoftwareVersion (SoftwareVersion)
 import Cardano.Crypto
@@ -153,7 +163,7 @@ instance B.Buildable Header where
     )
     headerHash
     (headerPrevHash header)
-    (consensusSlot consensus)
+    (epochAndSlotCount $ consensusSlot consensus)
     (unChainDifficulty $ consensusDifficulty consensus)
     (consensusLeaderKey consensus)
     (consensusSignature consensus)
@@ -196,7 +206,7 @@ instance Decoded (AHeader ByteString) where
 mkHeader
   :: ProtocolMagicId
   -> Either GenesisHash Header
-  -> SlotId
+  -> FlatSlotId
   -> SecretKey
   -- ^ The 'SecretKey' used for signing the block
   -> Maybe Delegation.Certificate
@@ -224,7 +234,7 @@ mkHeaderExplicit
   -> HeaderHash
   -- ^ Parent
   -> ChainDifficulty
-  -> SlotId
+  -> FlatSlotId
   -> SecretKey
   -- ^ The 'SecretKey' used for signing the block
   -> Maybe Delegation.Certificate
@@ -243,7 +253,9 @@ mkHeaderExplicit pm prevHash difficulty slotId sk mDlgCert body extra = AHeader
  where
   proof     = mkProof body
 
-  toSign    = ToSign prevHash proof slotId difficulty extra
+  toSign    = ToSign prevHash proof exsc difficulty extra
+
+  exsc = epochAndSlotCount slotId
 
   signature = case mDlgCert of
     Nothing -> BlockSignature $ sign pm SignMainBlock sk toSign
@@ -254,7 +266,18 @@ mkHeaderExplicit pm prevHash difficulty slotId sk mDlgCert body extra = AHeader
 
   consensus = consensusData slotId leaderPk difficulty signature
 
-headerSlot :: AHeader a -> SlotId
+-- | Epoch and slot count
+--
+-- TODO: we hardcode the number of slots per epoch for now. We might want to
+-- calculate this from the protocol parameters (use `k` and `kEpochSlots`).
+epochAndSlotCount :: FlatSlotId -> SlotId
+epochAndSlotCount = unflattenSlotId (EpochSlots 21600)
+
+-- | TODO: the same considerations as 'epochAndSlotCount'
+slotId :: SlotId -> FlatSlotId
+slotId = flattenSlotId (EpochSlots 21600)
+
+headerSlot :: AHeader a -> FlatSlotId
 headerSlot = consensusSlot . headerConsensusData
 
 headerLeaderKey :: AHeader a -> PublicKey
@@ -282,7 +305,7 @@ headerToSign :: AHeader a -> ToSign
 headerToSign h = ToSign
   (headerPrevHash h)
   (headerProof h)
-  (headerSlot h)
+  (epochAndSlotCount $ headerSlot h)
   (headerDifficulty h)
   (headerExtraData h)
 
@@ -455,7 +478,7 @@ recoverSignedBytes h = Annotated toSign bytes
   toSign = ToSign
     (headerPrevHash h)
     (headerProof h)
-    (headerSlot h)
+    (epochAndSlotCount $ headerSlot h)
     (headerDifficulty h)
     (headerExtraData h)
 
@@ -490,12 +513,12 @@ instance Bi ToSign where
 type ConsensusData = AConsensusData ()
 
 consensusData
-  :: SlotId -> PublicKey -> ChainDifficulty -> BlockSignature -> ConsensusData
-consensusData sid pk cd bs =
-  AConsensusData (Annotated sid ()) pk (Annotated cd ()) bs
+  :: FlatSlotId -> PublicKey -> ChainDifficulty -> BlockSignature -> ConsensusData
+consensusData fsid pk cd bs =
+  AConsensusData (Annotated fsid ()) pk (Annotated cd ()) bs
 
 data AConsensusData a = AConsensusData
-  { aConsensusSlot       :: !(Annotated SlotId a)
+  { aConsensusSlot       :: !(Annotated FlatSlotId a)
   -- ^ Id of the slot for which this block was generated
   , consensusLeaderKey   :: !PublicKey
   -- ^ Public key of the slot leader. It's essential to have it here, because
@@ -509,10 +532,16 @@ data AConsensusData a = AConsensusData
 
 decodeAConsensus :: Decoder s (AConsensusData ByteSpan)
 decodeAConsensus = do
-  enforceSize "ConsensusData" 4
-  AConsensusData <$> decodeAnnotated <*> decode <*> decodeAnnotated <*> decode
+  enforceSize "ConsensusData" 4 -- TODO: here we need to decode a SlotId into a FlatSlotId!
+  -- The slot id used in 'AConsensusData' is encoded as a epoch and slot-count pair.
+  exsc :: Annotated SlotId ByteSpan <- decodeAnnotated
+  pk <- decode
+  annChaiDifficulty <- decodeAnnotated
+  consensusSig <- decode
+  let afsid = first slotId exsc
+  pure $! AConsensusData afsid pk annChaiDifficulty consensusSig
 
-consensusSlot :: AConsensusData a -> SlotId
+consensusSlot :: AConsensusData a -> FlatSlotId
 consensusSlot = unAnnotated . aConsensusSlot
 
 consensusDifficulty :: AConsensusData a -> ChainDifficulty
@@ -521,7 +550,7 @@ consensusDifficulty = unAnnotated . aConsensusDifficulty
 instance Bi ConsensusData where
   encode cd =
     encodeListLen 4
-      <> encode (consensusSlot cd)
+      <> encode (epochAndSlotCount $ consensusSlot cd)
       <> encode (consensusLeaderKey cd)
       <> encode (consensusDifficulty cd)
       <> encode (consensusSignature cd)
