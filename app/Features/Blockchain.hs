@@ -16,6 +16,7 @@ import Cardano.Prelude
 import Formatting (build, sformat)
 
 import Cardano.Chain.Block (initialChainValidationState, ChainValidationState)
+-- import Cardano.Chain.Block.Validation (HeapSize, UTxOSize, scanUTxO)
 import Cardano.Chain.Epoch.Validation (EpochError, validateEpochFiles)
 import qualified Cardano.Chain.Genesis as Genesis
 import Cardano.Mirror (mainnetEpochFiles)
@@ -30,6 +31,10 @@ data BlockchainLayer = BlockchainLayer
       :: forall m
        . MonadIO m
       => m (Maybe (Either EpochError ChainValidationState))
+  --, currentUTxOSize
+  --    :: forall m
+  --    . MonadIO m
+  --    => m (Maybe (HeapSize UTxO, UTxOSize))
   }
 
 data BlockchainConfiguration = BlockchainConfiguration
@@ -49,15 +54,16 @@ init
   -> ApplicationEnvironment
   -> ChainValidationState
   -> MVar (Either EpochError ChainValidationState)
+  -- -> MVar (HeapSize UTxO, UTxOSize)
   -> m ()
-init config appEnv initialCVS resultVar = do
+init config appEnv initialCVS cvsVar = do
   -- Validate epoch files
   files <- case appEnv of
     Development -> take 10 <$> liftIO mainnetEpochFiles
     Production  -> liftIO mainnetEpochFiles
 
   result <- liftIO $ validateEpochFiles (genesisConfig config) initialCVS files
-  liftIO $ putMVar resultVar result
+  liftIO $ putMVar cvsVar result
 
 createBlockchainFeature
   :: CardanoEnvironment
@@ -91,7 +97,8 @@ createBlockchainFeature _ cc appEnv = do
       , featureShutdown = cleanup
       }
 
-  -- Create `BlockchainLayer`
+  -- Create `BlockchainLayer` which allows us to see the status of
+  -- the blockchain feature.
   let
     bcLayer =
       BlockchainLayer {chainValidationStatus = liftIO $ tryReadMVar resultVar}

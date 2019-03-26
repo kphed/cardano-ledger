@@ -45,6 +45,8 @@ main = do
     . CardanoApplication
     $ chainValidationApp loggingLayer blockchainLayer
 
+-- This checks the `MVar` in the `BlockchainLayer`
+-- to see if the `blockchainFeature` has finished.
 chainValidationApp :: LoggingLayer -> BlockchainLayer -> IO ()
 chainValidationApp ll bcl = do
   logTrace' <- appendName "cardano-chain" logTrace

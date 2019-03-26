@@ -341,3 +341,4 @@ blockAttributes = ebdAttributes . blockExtraData
 
 blockLength :: ABlock ByteString -> Int64
 blockLength = fromIntegral . BS.length . blockAnnotation
+

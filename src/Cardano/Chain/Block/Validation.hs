@@ -20,15 +20,26 @@ module Cardano.Chain.Block.Validation
   -- * SigningHistory
   , SigningHistory(..)
   , updateSigningHistory
+
+  -- * UTxO
+  , HeapSize(..)
+  , UTxOSize(..)
+  , foldUTxO
+  , foldUTxOBlund
+  , foldUTxOBlundMVar
+  , scanUTxO
   )
 where
 
 import Cardano.Prelude
 
+import Control.Monad.Trans.Resource (ResIO, runResourceT)
 import qualified Data.ByteString.Lazy as BSL
 import Data.Coerce (coerce)
 import qualified Data.Map.Strict as M
 import Data.Sequence (Seq(..), (<|))
+import Streaming (Of(..), Stream, hoist)
+import qualified Streaming.Prelude as S
 
 import Cardano.Chain.Block.Block
   ( ABlock(..)
@@ -40,6 +51,7 @@ import Cardano.Chain.Block.Block
   , blockLength
   , blockProof
   , blockSlot
+  , blockTxPayload
   )
 import Cardano.Chain.Block.Header
   ( BlockSignature(..)
@@ -48,11 +60,13 @@ import Cardano.Chain.Block.Header
   , wrapBoundaryBytes
   )
 import Cardano.Chain.Block.Proof (proofDelegation)
+import Cardano.Chain.Block.Undo (ABlund)
 import Cardano.Chain.Common (BlockCount(..), StakeholderId, mkStakeholderId)
 import qualified Cardano.Chain.Delegation as Delegation
 import qualified Cardano.Chain.Delegation.Payload as DlgPayload
 import Cardano.Chain.Delegation.Validation
   (initialInterfaceState, updateDelegation)
+import Cardano.Chain.Epoch.File (ParseError)
 import Cardano.Chain.Genesis as Genesis
   ( Config(..)
   , GenesisWStakeholders(..)
@@ -62,9 +76,13 @@ import Cardano.Chain.Genesis as Genesis
   , configK
   , configSlotSecurityParam
   )
-import Cardano.Chain.Slotting (flattenSlotId)
+import Cardano.Chain.Slotting (flattenSlotId, SlotId)
+import Cardano.Chain.Txp.TxPayload (aUnTxPayload)
+import Cardano.Chain.Txp.UTxO (UTxO(..))
+import Cardano.Chain.Txp.Validation (UTxOValidationError, updateUTxOWitness)
 import Cardano.Crypto
-  ( PublicKey
+  ( ProtocolMagicId
+  , PublicKey
   , hash
   , hashRaw
   )
@@ -302,3 +320,61 @@ updateBlock config cvs b = do
   updateHeader config cvs b
     >>= (\cvs' -> return $ cvs' { cvsPreviousHash = Just $ blockHashAnnotated b })
     >>= (\cvs' -> updateBody config cvs' b)
+
+--------------------------------------------------------------------------------
+-- UTxO
+--------------------------------------------------------------------------------
+
+data Error
+  = ErrorParseError ParseError
+  | ErrorUTxOValidationError SlotId UTxOValidationError
+  deriving (Eq, Show)
+
+-- | Return the updated UTxO after each block.
+scanUTxO
+  :: ProtocolMagicId
+  -> UTxO
+  -> MVar (HeapSize UTxO, UTxOSize)
+  -> Stream (Of (ABlund ByteString)) (ExceptT ParseError ResIO) ()
+  -> Stream (Of UTxO) (ExceptT Error ResIO) ()
+scanUTxO pm utxo sizeMVar blunds = S.scanM
+  (foldUTxOBlundMVar pm sizeMVar)
+  (pure utxo)
+  pure $ hoist (withExceptT ErrorParseError) blunds
+
+-- | Fold transaction validation over a 'Stream' of 'Blund's
+foldUTxO
+  :: ProtocolMagicId
+  -> UTxO
+  -> Stream (Of (ABlund ByteString)) (ExceptT ParseError ResIO) ()
+  -> ExceptT Error ResIO UTxO
+foldUTxO pm utxo blunds = S.foldM_
+  (foldUTxOBlund pm)
+  (pure utxo)
+  pure
+  (hoist (withExceptT ErrorParseError) blunds)
+
+-- | Fold 'updateUTxO' over the transactions in a single 'Blund'
+foldUTxOBlund
+  :: ProtocolMagicId -> UTxO -> ABlund ByteString -> ExceptT Error ResIO UTxO
+foldUTxOBlund pm utxo (block, _) =
+  withExceptT (ErrorUTxOValidationError $ blockSlot block)
+    $ foldM (updateUTxOWitness pm) utxo (aUnTxPayload $ blockTxPayload block)
+
+newtype HeapSize a = HeapSize { unHeapSize :: Int}
+
+newtype UTxOSize = UTxOSize { unUTxOSize :: Int}
+
+-- | Fold 'updateUTxO' over the transactions in a single 'Blund' and update
+-- an MVar with the
+foldUTxOBlundMVar
+  :: ProtocolMagicId -> MVar (HeapSize UTxO, UTxOSize) -> UTxO -> ABlund ByteString -> ExceptT Error ResIO UTxO
+foldUTxOBlundMVar pm sizeMVar utxo blund = do
+  resResult <- liftIO . runResourceT . runExceptT $ foldUTxOBlund  pm utxo blund
+  case resResult of
+    Left e -> throwE e
+    Right updatedUtxo -> (liftIO . swapMVar sizeMVar $ calcUTxOSize updatedUtxo) >> return updatedUtxo
+
+calcUTxOSize :: UTxO -> (HeapSize UTxO, UTxOSize)
+calcUTxOSize utxo =
+  (HeapSize . heapWords $ unUTxO utxo, UTxOSize . M.size $ unUTxO utxo)

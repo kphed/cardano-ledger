@@ -2,7 +2,7 @@
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
 
 module Cardano.Chain.Txp.UTxO
-  ( UTxO
+  ( UTxO(..)
   , UTxOError
   , fromList
   , member
