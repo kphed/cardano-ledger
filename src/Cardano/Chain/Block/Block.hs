@@ -49,6 +49,7 @@ where
 import Cardano.Prelude
 
 import qualified Data.ByteString as BS
+import Data.Text.Lazy.Builder (Builder)
 import Formatting (bprint, build, int, shown)
 import qualified Formatting.Buildable as B
 
@@ -86,6 +87,7 @@ import Cardano.Chain.Block.Header
   , ToSign
   , decodeAHeader
   , dropBoundaryHeader
+  , encodeHeader'
   , epochAndSlotCount -- TODO: put this in the right module. Might not be needed after the refactoring is complete.
   , genesisHeaderHash
   , hashHeader
@@ -101,13 +103,19 @@ import Cardano.Chain.Block.Header
   , headerSoftwareVersion
   , headerToSign
   , mkHeaderExplicit
+  , renderHeader
   , wrapHeaderBytes
   )
 import Cardano.Chain.Block.Proof (Proof(..))
 import Cardano.Chain.Common (Attributes, ChainDifficulty (..), mkAttributes)
 import qualified Cardano.Chain.Delegation as Delegation
 import Cardano.Chain.Genesis.Hash (GenesisHash(..))
-import Cardano.Chain.Slotting (SlotId(..), EpochSlots(EpochSlots), flattenSlotId)
+import Cardano.Chain.Slotting
+  ( EpochSlots(EpochSlots)
+  , SlotId(..)
+  , WithEpochSlots(WithEpochSlots)
+  , flattenSlotId
+  )
 import Cardano.Chain.Ssc (SscPayload)
 import Cardano.Chain.Txp.TxPayload (ATxPayload)
 import Cardano.Chain.Update.ProtocolVersion (ProtocolVersion)
@@ -131,8 +139,13 @@ data ABlock a = ABlock
   , blockAnnotation :: a
   } deriving (Eq, Show, Generic, NFData, Functor)
 
-instance B.Buildable Block where
-  build block = bprint
+instance B.Buildable (WithEpochSlots Block) where
+  build (WithEpochSlots es block) = renderBlock es block
+
+
+renderBlock :: EpochSlots -> Block -> Builder
+renderBlock es block =
+  bprint
     ( "Block:\n"
     . "  " . build . "  transactions (" . int . " items): " . listJson . "\n"
     . "  " . build . "\n"
@@ -140,23 +153,29 @@ instance B.Buildable Block where
     . "  update payload: " . build . "\n"
     . "  " . build
     )
-    (blockHeader block)
+    (WithEpochSlots es $ blockHeader block) -- TODO: ask the more experiences
+                                            -- devs around you: `build` is
+                                            -- overloaded as hell. Are there
+                                            -- better ways to do this?
     (length txs)
     txs
     (blockDlgPayload block)
     (blockSscPayload block)
     (blockUpdatePayload block)
     (blockExtraData block)
-    where txs = bodyTxs $ blockBody block
+  where txs = bodyTxs $ blockBody block
 
-instance Bi Block where
-  encode block =
-    encodeListLen 3
-      <> encode (blockHeader block)
-      <> encode (blockBody block)
-      <> encode (blockExtraData block)
 
-  decode = void <$> decodeABlock
+-- | TODO: document this and ask what `encodeBlock` is doing?
+encodeBlock' :: EpochSlots -> Block -> Encoding
+encodeBlock' es block
+  =  encodeListLen 3
+  <> encodeHeader' es (blockHeader block)
+  <> encode (blockBody block)
+  <> encode (blockExtraData block)
+
+decodeBlock' :: Decoder s Block
+decodeBlock' = void <$> decodeABlock
 
 decodeABlock :: Decoder s (ABlock ByteSpan)
 decodeABlock = do
@@ -168,9 +187,9 @@ decodeABlock = do
 
 
 -- | Encode a 'Block' accounting for deprecated epoch boundary blocks
-encodeBlock :: Block -> Encoding
-encodeBlock block = encodeListLen 2 <> encode (1 :: Word) <> encode block
-
+encodeBlock :: EpochSlots -> Block -> Encoding
+encodeBlock es block =
+  encodeListLen 2 <> encode (1 :: Word) <> encodeBlock' es block
 
 data ABlockOrBoundary a
   = ABOBBlock (ABlock a)
@@ -237,6 +256,7 @@ mkBlock
   -> ProtocolVersion
   -> SoftwareVersion
   -> Either GenesisHash Header
+  -> EpochSlots
   -> SlotId
   -> SecretKey
   -- ^ The 'SecretKey' used for signing the block
@@ -245,9 +265,9 @@ mkBlock
   --   right to sign this block
   -> Body
   -> Block
-mkBlock pm bv sv prevHeader = mkBlockExplicit pm bv sv prevHash difficulty
+mkBlock pm bv sv prevHeader es = mkBlockExplicit pm bv sv prevHash difficulty es
  where
-  prevHash   = either genesisHeaderHash hashHeader prevHeader
+  prevHash   = either genesisHeaderHash (hashHeader es) prevHeader
   difficulty = either (const $ ChainDifficulty 0) (succ . headerDifficulty) prevHeader
 
 -- | Smart constructor for 'Block', without requiring the entire previous
@@ -260,7 +280,8 @@ mkBlockExplicit
   -> SoftwareVersion
   -> HeaderHash
   -> ChainDifficulty
-  -> SlotId
+  -> EpochSlots
+  -> SlotId -- TODO: change this to FlatSlotId
   -> SecretKey
   -- ^ The 'SecretKey' used for signing the block
   -> Maybe Delegation.Certificate
@@ -268,8 +289,8 @@ mkBlockExplicit
   --   right to sign this block
   -> Body
   -> Block
-mkBlockExplicit pm bv sv prevHash difficulty slotId sk mDlgCert body = ABlock
-  (mkHeaderExplicit pm prevHash difficulty fsid sk mDlgCert body extraH)
+mkBlockExplicit pm bv sv prevHash difficulty es slotId sk mDlgCert body = ABlock
+  (mkHeaderExplicit pm prevHash difficulty es fsid sk mDlgCert body extraH)
   body
   (Annotated extraB ())
   ()
@@ -281,15 +302,15 @@ mkBlockExplicit pm bv sv prevHash difficulty slotId sk mDlgCert body = ABlock
 
   -- TODO: for now we hardcode the number of slots per epoch. See 'epochAndSlotCount'
   -- for details on how we'd want to do this properly.
-  fsid = flattenSlotId (EpochSlots 21600) slotId
+  fsid = flattenSlotId es slotId
 
 
 --------------------------------------------------------------------------------
 -- Block accessors
 --------------------------------------------------------------------------------
 
-blockHash :: Block -> HeaderHash
-blockHash = hashHeader . blockHeader
+blockHash :: EpochSlots -> Block -> HeaderHash
+blockHash es = hashHeader es . blockHeader
 
 blockHashAnnotated :: ABlock ByteString -> HeaderHash
 blockHashAnnotated = hashDecoded . fmap wrapHeaderBytes . blockHeader

@@ -1,5 +1,8 @@
-{-# LANGUAGE OverloadedStrings #-}
-{-# LANGUAGE TemplateHaskell   #-}
+{-# LANGUAGE OverloadedStrings   #-}
+{-# LANGUAGE RankNTypes          #-}
+{-# LANGUAGE ScopedTypeVariables #-}
+{-# LANGUAGE TemplateHaskell     #-}
+{-# LANGUAGE TypeApplications    #-}
 
 {-# OPTIONS_GHC -fno-warn-incomplete-uni-patterns #-}
 
@@ -19,13 +22,22 @@ where
 import Cardano.Prelude
 import Test.Cardano.Prelude
 
+import qualified Data.ByteString.Lazy.Char8 as BS
 import Data.Coerce (coerce)
 import Data.Maybe (fromJust)
 
-import Hedgehog (Property)
+import Hedgehog (Property, (===), withTests, property, tripping, Gen)
 import qualified Hedgehog as H
 
-import Cardano.Binary.Class (decodeFullDecoder, dropBytes, serializeEncoding)
+import Cardano.Binary.Class
+  ( Decoder
+  , DecoderError
+  , Encoding
+  , decodeFullDecoder
+  , dropBytes
+  , label
+  , serializeEncoding
+  )
 import Cardano.Chain.Block
   ( Block
   , BlockSignature(..)
@@ -42,17 +54,26 @@ import Cardano.Chain.Block
   , body
   , consensusData
   , decodeBlockOrBoundary
+  , decodeConcensusData
   , decodeHeader
+  , decodeHeader'
   , dropBoundaryBody
   , dropBoundaryConsensusData
   , dropBoundaryHeader
   , encodeBlock
+  , encodeConcensusData
   , encodeHeader
+  , encodeHeader'
   , mkHeaderExplicit
   )
 import Cardano.Chain.Common (mkAttributes)
 import qualified Cardano.Chain.Delegation as Delegation
-import Cardano.Chain.Slotting (EpochIndex(..))
+import Cardano.Chain.Slotting
+  ( EpochIndex(..)
+  , EpochSlots(EpochSlots)
+  , WithEpochSlots(WithEpochSlots)
+  , unWithEpochSlots
+  )
 import Cardano.Chain.Ssc (SscPayload(..), SscProof(..))
 import Cardano.Crypto
   ( ProtocolMagicId(..)
@@ -68,6 +89,7 @@ import Cardano.Crypto
 
 import Test.Cardano.Binary.Helpers.GoldenRoundTrip
   ( deprecatedGoldenDecode
+  , compareHexDump
   , goldenTestBi
   , roundTripsBiBuildable
   , roundTripsBiShow
@@ -77,7 +99,7 @@ import Test.Cardano.Chain.Common.Example (exampleChainDifficulty)
 import Test.Cardano.Chain.Delegation.Example (exampleCertificates)
 import qualified Test.Cardano.Chain.Delegation.Example as Delegation
 import Test.Cardano.Chain.Slotting.Example (exampleSlotId, exampleFlatSlotId)
-import Test.Cardano.Chain.Slotting.Gen (feedPMEpochSlots)
+import Test.Cardano.Chain.Slotting.Gen (feedPMEpochSlots, genEpochSlots)
 import Test.Cardano.Chain.Txp.Example
   (exampleTxPayload, exampleTxProof, exampleTxpUndo)
 import qualified Test.Cardano.Chain.Update.Example as Update
@@ -91,45 +113,78 @@ import Test.Cardano.Crypto.Gen (feedPM)
 --------------------------------------------------------------------------------
 
 goldenHeader :: Property
-goldenHeader = goldenTestBi exampleHeader "test/golden/bi/block/Header"
+goldenHeader =
+  _goldenTestCBOR
+    (encodeHeader' (EpochSlots 50))
+    decodeHeader'
+    exampleHeader
+    "test/golden/bi/block/Header"
 
-roundTripHeaderBi :: Property
-roundTripHeaderBi =
-  eachOf 10 (feedPMEpochSlots genHeader) roundTripsBiBuildable
+-- | Re-implementation of 'goldenTestBi' using custom encode and decode functions.
+--
+-- This is required for the encode/decode golden-tests for types that do no
+-- have a 'Bi' instance, such as 'ConcensusData', 'Header', and 'Block'.
+--
+-- TODO: move to @Test.Cardano.Binary.Helpers.GoldenRoundTrip@, in @binary@
+-- package. Also define @goldenTestBi@ in terms of @goldenTestCBOR@
+_goldenTestCBOR
+  :: forall a
+  . (Eq a, Show a, HasCallStack)
+  => (a -> Encoding)
+  -> (forall s . Decoder s a)
+  -> a
+  -> FilePath
+  -> Property
+_goldenTestCBOR enc dec x path = withFrozenCallStack $ do
+  let bs' = encodeWithIndex . serializeEncoding . enc $ x
+  withTests 1 . property $ do
+    bs <- liftIO $ BS.readFile path
+    let target = decodeBase16 bs
+    compareHexDump bs bs'
+    let
+      fullDecoder :: BS.ByteString -> Either DecoderError a
+      fullDecoder = decodeFullDecoder "" dec -- TODO: do we want to pass the label as parameter?
+    fmap fullDecoder target === Just (Right x)
+
+-- TODO: discuss with Ru whether we want to keep this, as it seems to be the
+-- same as 'roundTripHeaderBi'.
+-- roundTripHeaderBi :: Property
+-- roundTripHeaderBi =
+--   eachOf 10 (feedPM genHeaderWithEpochSlots) roundTripsBiBuildable
 
 -- | Round-trip test the backwards compatible header encoding/decoding functions
 roundTripHeaderCompat :: Property
-roundTripHeaderCompat = eachOf
-  10
-  (feedPMEpochSlots genHeader)
-  roundTripsHeaderCompat
- where
-  roundTripsHeaderCompat :: Header -> H.PropertyT IO ()
-  roundTripsHeaderCompat a = trippingBuildable
-    a
-    (serializeEncoding . encodeHeader)
-    (fmap fromJust . decodeFullDecoder "Header" decodeHeader)
+roundTripHeaderCompat =
+  eachOf 10 (feedPM genHeaderWithEpochSlots) roundTripsHeaderCompat
+  where
+    roundTripsHeaderCompat :: WithEpochSlots Header -> H.PropertyT IO ()
+    roundTripsHeaderCompat esh@(WithEpochSlots es h) =
+      trippingBuildable
+        esh
+        (serializeEncoding . encodeHeader es . unWithEpochSlots)
+        (fmap (WithEpochSlots es . fromJust) . decodeFullDecoder "Header" decodeHeader)
 
 
 --------------------------------------------------------------------------------
 -- Block
 --------------------------------------------------------------------------------
 
-roundTripBlock :: Property
-roundTripBlock = eachOf 10 (feedPMEpochSlots genBlock) roundTripsBiBuildable
+-- TODO: see comment for 'roundTripHeaderBi'
+-- roundTripBlock :: Property
+-- roundTripBlock =
+--   eachOf 10 (feedPM genBlockWithEpochSlots) roundTripsBiBuildable
 
 -- | Round-trip test the backwards compatible block encoding/decoding functions
 roundTripBlockCompat :: Property
-roundTripBlockCompat = eachOf
-  10
-  (feedPMEpochSlots genBlock)
-  roundTripsBlockCompat
- where
-  roundTripsBlockCompat :: Block -> H.PropertyT IO ()
-  roundTripsBlockCompat a = trippingBuildable
-    a
-    (serializeEncoding . encodeBlock)
-    (fmap fromJust . decodeFullDecoder "Block" decodeBlockOrBoundary)
+roundTripBlockCompat =
+  eachOf 10 (feedPM genBlockWithEpochSlots) roundTripsBlockCompat
+  where
+    roundTripsBlockCompat :: WithEpochSlots Block -> H.PropertyT IO ()
+    roundTripsBlockCompat esb@(WithEpochSlots es b) =
+      trippingBuildable
+        esb
+        (serializeEncoding . encodeBlock es . unWithEpochSlots)
+        (fmap (WithEpochSlots es . fromJust) . decodeFullDecoder "Block" decodeBlockOrBoundary)
 
 
 --------------------------------------------------------------------------------
@@ -221,19 +276,42 @@ roundTripBodyBi = eachOf 20 (feedPM genBody) roundTripsBiShow
 -- ConsensusData
 --------------------------------------------------------------------------------
 
+exampleEs :: EpochSlots
+exampleEs = EpochSlots 50
+
 goldenConsensusData :: Property
-goldenConsensusData = goldenTestBi mcd "test/golden/bi/block/ConsensusData"
+goldenConsensusData =
+  _goldenTestCBOR
+    (encodeConcensusData exampleEs)
+    decodeConcensusData
+    mcd
+    "test/golden/bi/block/ConsensusData"
  where
-  mcd = consensusData
-    exampleFlatSlotId
-    examplePublicKey
-    exampleChainDifficulty
-    exampleBlockSignature
+  mcd =
+    consensusData
+      (exampleFlatSlotId exampleEs)
+      examplePublicKey
+      exampleChainDifficulty
+      exampleBlockSignature
 
 roundTripConsensusData :: Property
 roundTripConsensusData =
-  eachOf 20 (feedPMEpochSlots genConsensusData) roundTripsBiShow
+  eachOf 20 (feedPMEpochSlots $ genWithEpochSlots genConsensusData) roundTripConsensusData -- roundTripsBiShow
+  where
+    roundTripConsensusData :: WithEpochSlots ConsensusData -> H.PropertyT IO ()
+    roundTripConsensusData (WithEpochSlots es cd) =
+      tripping
+        cd
+        (serializeEncoding . encodeConcensusData es)
+        (decodeFullDecoder "ConsensusData" decodeConcensusData)
 
+-- TODO: put this in the appropriate place, and think whether we can give a better name.
+genWithEpochSlots
+  :: (ProtocolMagicId -> EpochSlots -> Gen a)
+  -> ProtocolMagicId
+  -> EpochSlots
+  -> Gen (WithEpochSlots a)
+genWithEpochSlots gen pm es = WithEpochSlots es <$> gen pm es
 
 --------------------------------------------------------------------------------
 -- ExtraBodyData
@@ -302,7 +380,8 @@ exampleHeader = mkHeaderExplicit
   (ProtocolMagicId 7)
   exampleHeaderHash
   exampleChainDifficulty
-  exampleFlatSlotId
+  (EpochSlots 50)
+  (exampleFlatSlotId $ EpochSlots 50)
   exampleSecretKey
   Nothing
   exampleBody
@@ -326,7 +405,7 @@ exampleBlockPSignatureHeavy = BlockPSignatureHeavy sig
 
 exampleConsensusData :: ConsensusData
 exampleConsensusData = consensusData
-  exampleFlatSlotId
+  (exampleFlatSlotId exampleEs)
   examplePublicKey
   exampleChainDifficulty
   exampleBlockSignature
@@ -357,7 +436,7 @@ exampleToSign :: ToSign
 exampleToSign = ToSign
   exampleHeaderHash
   exampleProof
-  exampleSlotId
+  (exampleSlotId exampleEs)
   exampleChainDifficulty
   exampleExtraHeaderData
 

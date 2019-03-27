@@ -144,5 +144,5 @@ genSlottingDataInvalidIndicies = unsafeSlottingData <$> genSlottingDataMap
 feedPMEpochSlots :: (ProtocolMagicId -> EpochSlots -> Gen a) -> Gen a
 feedPMEpochSlots genA = do
   pm         <- genProtocolMagicId
-  epochSlots <- EpochSlots . fromIntegral <$> Gen.word16 Range.constantBounded
+  epochSlots <- EpochSlots . fromIntegral <$> Gen.word16 Range.constantBounded -- TODO: why not genEpochSlots???
   genA pm epochSlots

@@ -21,6 +21,7 @@ import Cardano.Chain.Slotting
   , FlatSlotId (FlatSlotId)
   , mkLocalSlotIndex
   , mkSlottingData
+  , flattenSlotId
   )
 
 
@@ -31,12 +32,15 @@ exampleEpochSlottingData :: EpochSlottingData
 exampleEpochSlottingData =
   EpochSlottingData {esdSlotDuration = 100e-6, esdStartDiff = 100e-6}
 
-exampleFlatSlotId :: FlatSlotId
-exampleFlatSlotId = FlatSlotId $ (11 * 50) + 47
+exampleFlatSlotId :: EpochSlots -> FlatSlotId
+exampleFlatSlotId es =
+  flattenSlotId es (exampleSlotId es)
 
-exampleSlotId :: SlotId
-exampleSlotId = SlotId (EpochIndex 11) lsi
-  where Right lsi = mkLocalSlotIndex (EpochSlots 50) 47
+-- TODO: es was (EpochSlots 50)
+
+exampleSlotId :: EpochSlots -> SlotId
+exampleSlotId es = SlotId (EpochIndex 11) lsi
+  where Right lsi = mkLocalSlotIndex es 47
 
 exampleSlottingData :: SlottingData
 exampleSlottingData = slottingData

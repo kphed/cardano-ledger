@@ -2,6 +2,7 @@ module Test.Cardano.Chain.Block.Gen
   ( genBlockSignature
   , genHeaderHash
   , genHeader
+  , genHeaderWithEpochSlots
   , genBody
   , genConsensusData
   , genExtraBodyData
@@ -9,6 +10,7 @@ module Test.Cardano.Chain.Block.Gen
   , genProof
   , genToSign
   , genBlock
+  , genBlockWithEpochSlots
   , genSlogUndo
   , genUndo
   )
@@ -25,6 +27,7 @@ import Cardano.Chain.Block
   , BlockSignature(..)
   , Body
   , ConsensusData
+  , hashHeader
   , ExtraBodyData(..)
   , ExtraHeaderData(..)
   , Header
@@ -39,13 +42,18 @@ import Cardano.Chain.Block
   , mkHeaderExplicit
   )
 import Cardano.Chain.Common (mkAttributes)
-import Cardano.Chain.Slotting (EpochSlots)
+import Cardano.Chain.Slotting (EpochSlots, WithEpochSlots(WithEpochSlots))
 import Cardano.Chain.Ssc (SscPayload(..), SscProof(..))
-import Cardano.Crypto (ProtocolMagicId)
+import Cardano.Crypto (ProtocolMagicId, abstractHash)
 
 import Test.Cardano.Chain.Common.Gen (genChainDifficulty)
 import qualified Test.Cardano.Chain.Delegation.Gen as Delegation
-import Test.Cardano.Chain.Slotting.Gen (genEpochIndex, genFlatSlotId, genSlotId)
+import Test.Cardano.Chain.Slotting.Gen
+  ( genEpochIndex
+  , genEpochSlots
+  , genFlatSlotId
+  , genSlotId
+  )
 import Test.Cardano.Chain.Txp.Gen (genTxPayload, genTxProof, genTxpUndo)
 import qualified Test.Cardano.Chain.Update.Gen as Update
 import Test.Cardano.Crypto.Gen
@@ -76,6 +84,12 @@ genBody pm =
     <*> Delegation.genPayload pm
     <*> Update.genPayload pm
 
+genHeaderWithEpochSlots :: ProtocolMagicId -> Gen (WithEpochSlots Header)
+genHeaderWithEpochSlots pm = do
+  es <- genEpochSlots
+  h  <- genHeader pm es
+  pure $! WithEpochSlots es h
+
 -- We use `Nothing` as the ProxyVKBlockInfo to avoid clashing key errors
 -- (since we use example keys which aren't related to each other)
 genHeader :: ProtocolMagicId -> EpochSlots -> Gen Header
@@ -83,7 +97,8 @@ genHeader pm epochSlots =
   mkHeaderExplicit pm
     <$> genHeaderHash
     <*> genChainDifficulty
-    <*> genFlatSlotId -- TODO: here we're not using the epochSlots anymore? What are the implications?
+    <*> pure epochSlots
+    <*> genFlatSlotId
     <*> genSecretKey
     <*> pure Nothing
     <*> genBody pm
@@ -119,11 +134,24 @@ genProof pm =
 genToSign :: ProtocolMagicId -> EpochSlots -> Gen ToSign
 genToSign pm epochSlots =
   ToSign
-    <$> genAbstractHash (genHeader pm epochSlots)
+    -- TODO: check this. Here I wanted to use a wrapper around 'Header' to be
+    -- able to write a 'Bi' instance for it. The hash of @WithEpochSlots es h@
+    -- and @h@ should be the same, provided @h@ is encoded using @es@
+    -- slots-per-epoch.
+    <$> (mkAbstractHash <$> genHeader pm epochSlots)
     <*> genProof pm
     <*> genSlotId epochSlots
     <*> genChainDifficulty
     <*> genExtraHeaderData
+  where
+    mkAbstractHash :: Header -> HeaderHash
+    mkAbstractHash = hashHeader epochSlots
+
+genBlockWithEpochSlots :: ProtocolMagicId -> Gen (WithEpochSlots Block)
+genBlockWithEpochSlots pm = do
+  es <- genEpochSlots
+  b  <- genBlock pm es
+  pure $! WithEpochSlots es b
 
 genBlock :: ProtocolMagicId -> EpochSlots -> Gen Block
 genBlock pm epochSlots =
@@ -132,6 +160,7 @@ genBlock pm epochSlots =
     <*> Update.genSoftwareVersion
     <*> genHeaderHash
     <*> genChainDifficulty
+    <*> pure epochSlots
     <*> genSlotId epochSlots
     <*> genSecretKey
     <*> pure Nothing
