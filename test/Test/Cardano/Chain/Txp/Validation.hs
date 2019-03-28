@@ -37,7 +37,7 @@ import Cardano.Crypto (ProtocolMagicId, getProtocolMagicId)
 import Cardano.Mirror (mainnetEpochFiles)
 
 import Test.Options (TestScenario(..))
-
+import Test.Cardano.Chain.Config (mainnetEpochSlots)
 
 -- | These tests perform transaction validation over mainnet epoch files
 --
@@ -87,7 +87,7 @@ epochValid :: ProtocolMagicId -> IORef UTxO -> FilePath -> Property
 epochValid pm utxoRef fp = withTests 1 . property $ do
   utxo <- liftIO $ readIORef utxoRef
   -- TODO: put this hardcoded module in some central file.
-  let stream = parseEpochFile (EpochSlots 21600) fp
+  let stream = parseEpochFile mainnetEpochSlots fp
   result  <- (liftIO . runResourceT . runExceptT) (foldUTxO pm utxo stream)
   newUtxo <- evalEither result
   liftIO $ writeIORef utxoRef newUtxo

@@ -10,6 +10,7 @@ module Test.Cardano.Chain.Slotting.Gen
   , genLocalSlotIndex
   , genLsiEpochSlots
   , genEpochSlots
+  , genWithEpochSlots
   , genSlotId
   , genConsistentSlotIdEpochSlots
   , genSlottingData
@@ -29,17 +30,18 @@ import qualified Hedgehog.Range as Range
 
 import Cardano.Chain.Slotting
   ( EpochIndex(..)
+  , EpochSlots(..)
   , EpochSlottingData(..)
   , FlatSlotId(..)
   , LocalSlotIndex
-  , EpochSlots(..)
   , SlotId(..)
   , SlottingData
-  , unLocalSlotIndex
+  , WithEpochSlots(WithEpochSlots)
   , localSlotIndexMaxBound
   , localSlotIndexMinBound
   , mkLocalSlotIndex
   , mkSlottingData
+  , unLocalSlotIndex
   , unsafeSlottingData
   )
 import Cardano.Crypto (ProtocolMagicId)
@@ -89,6 +91,15 @@ genLocalSlotIndex epochSlots = mkLocalSlotIndex'
 genEpochSlots :: Gen EpochSlots
 genEpochSlots =
   EpochSlots . succ . fromIntegral <$> Gen.word16 Range.constantBounded
+
+-- | Generate a value wrapped on a 'WithEpochSlots' context, using the given
+-- generator functions, and its arguments
+genWithEpochSlots
+  :: (ProtocolMagicId -> EpochSlots -> Gen a)
+  -> ProtocolMagicId
+  -> EpochSlots
+  -> Gen (WithEpochSlots a)
+genWithEpochSlots gen pm es = WithEpochSlots es <$> gen pm es
 
 genSlotId :: EpochSlots -> Gen SlotId
 genSlotId epochSlots =

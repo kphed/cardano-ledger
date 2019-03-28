@@ -54,14 +54,14 @@ import Cardano.Chain.Block
   , body
   , consensusData
   , decodeBlockOrBoundary
-  , decodeConcensusData
+  , decodeConsensusData
   , decodeHeader
   , decodeHeader'
   , dropBoundaryBody
   , dropBoundaryConsensusData
   , dropBoundaryHeader
   , encodeBlock
-  , encodeConcensusData
+  , encodeConsensusData
   , encodeHeader
   , encodeHeader'
   , mkHeaderExplicit
@@ -99,7 +99,11 @@ import Test.Cardano.Chain.Common.Example (exampleChainDifficulty)
 import Test.Cardano.Chain.Delegation.Example (exampleCertificates)
 import qualified Test.Cardano.Chain.Delegation.Example as Delegation
 import Test.Cardano.Chain.Slotting.Example (exampleSlotId, exampleFlatSlotId)
-import Test.Cardano.Chain.Slotting.Gen (feedPMEpochSlots, genEpochSlots)
+import Test.Cardano.Chain.Slotting.Gen
+  ( feedPMEpochSlots
+  , genEpochSlots
+  , genWithEpochSlots
+  )
 import Test.Cardano.Chain.Txp.Example
   (exampleTxPayload, exampleTxProof, exampleTxpUndo)
 import qualified Test.Cardano.Chain.Update.Example as Update
@@ -284,8 +288,8 @@ roundTripBodyBi = eachOf 20 (feedPM genBody) roundTripsBiShow
 goldenConsensusData :: Property
 goldenConsensusData =
   _goldenTestCBOR
-    (encodeConcensusData exampleEs)
-    (decodeConcensusData exampleEs)
+    (encodeConsensusData exampleEs)
+    (decodeConsensusData exampleEs)
     mcd
     "test/golden/bi/block/ConsensusData"
  where
@@ -304,16 +308,8 @@ roundTripConsensusData =
     roundTripConsensusData (WithEpochSlots es cd) =
       tripping
         cd
-        (serializeEncoding . encodeConcensusData es)
-        (decodeFullDecoder "ConsensusData" $ decodeConcensusData es)
-
--- TODO: put this in the appropriate place, and think whether we can give a better name.
-genWithEpochSlots
-  :: (ProtocolMagicId -> EpochSlots -> Gen a)
-  -> ProtocolMagicId
-  -> EpochSlots
-  -> Gen (WithEpochSlots a)
-genWithEpochSlots gen pm es = WithEpochSlots es <$> gen pm es
+        (serializeEncoding . encodeConsensusData es)
+        (decodeFullDecoder "ConsensusData" $ decodeConsensusData es)
 
 --------------------------------------------------------------------------------
 -- ExtraBodyData

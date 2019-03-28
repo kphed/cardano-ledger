@@ -86,9 +86,9 @@ genBody pm =
 
 genHeaderWithEpochSlots :: ProtocolMagicId -> Gen (WithEpochSlots Header)
 genHeaderWithEpochSlots pm = do
-  es <- genEpochSlots
-  h  <- genHeader pm es
-  pure $! WithEpochSlots es h
+  epochSlots <- genEpochSlots
+  h <- genHeader pm epochSlots
+  pure $! WithEpochSlots epochSlots h
 
 -- We use `Nothing` as the ProxyVKBlockInfo to avoid clashing key errors
 -- (since we use example keys which aren't related to each other)
@@ -107,7 +107,7 @@ genHeader pm epochSlots =
 genConsensusData :: ProtocolMagicId -> EpochSlots -> Gen ConsensusData
 genConsensusData pm epochSlots =
   consensusData
-    <$> genFlatSlotId -- TODO: here we're not using the epochSlots anymore? What are the implications?
+    <$> genFlatSlotId
     <*> genPublicKey
     <*> genChainDifficulty
     <*> genBlockSignature pm epochSlots
@@ -134,10 +134,6 @@ genProof pm =
 genToSign :: ProtocolMagicId -> EpochSlots -> Gen ToSign
 genToSign pm epochSlots =
   ToSign
-    -- TODO: check this. Here I wanted to use a wrapper around 'Header' to be
-    -- able to write a 'Bi' instance for it. The hash of @WithEpochSlots es h@
-    -- and @h@ should be the same, provided @h@ is encoded using @es@
-    -- slots-per-epoch.
     <$> (mkAbstractHash <$> genHeader pm epochSlots)
     <*> genProof pm
     <*> genSlotId epochSlots
@@ -149,9 +145,9 @@ genToSign pm epochSlots =
 
 genBlockWithEpochSlots :: ProtocolMagicId -> Gen (WithEpochSlots Block)
 genBlockWithEpochSlots pm = do
-  es <- genEpochSlots
-  b  <- genBlock pm es
-  pure $! WithEpochSlots es b
+  epochSlots <- genEpochSlots
+  b  <- genBlock pm epochSlots
+  pure $! WithEpochSlots epochSlots b
 
 genBlock :: ProtocolMagicId -> EpochSlots -> Gen Block
 genBlock pm epochSlots =

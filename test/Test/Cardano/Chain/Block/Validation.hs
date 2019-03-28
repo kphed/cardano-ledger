@@ -58,7 +58,7 @@ import Cardano.Mirror (mainnetEpochFiles)
 
 import Test.Cardano.Crypto.Gen (genPublicKey)
 import Test.Options (TestScenario(..))
-import Test.Cardano.Chain.Config (readMainetCfg)
+import Test.Cardano.Chain.Config (mainnetEpochSlots, readMainetCfg)
 
 -- | These tests perform chain validation over mainnet epoch files
 --
@@ -110,7 +110,7 @@ epochValid
 epochValid config cvsRef fp = withTests 1 . property $ do
   cvs <- liftIO $ readIORef cvsRef
   -- TODO: put the hardcoded value in some central place.
-  let stream = parseEpochFileWithBoundary (EpochSlots 21600) fp
+  let stream = parseEpochFileWithBoundary mainnetEpochSlots fp
   result <- (liftIO . runResourceT . runExceptT)
     (foldChainValidationState config cvs $ S.map fst stream)
   newCvs <- evalEither result

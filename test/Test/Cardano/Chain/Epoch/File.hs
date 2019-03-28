@@ -17,6 +17,7 @@ import Cardano.Chain.Epoch.File (ParseError, parseEpochFiles)
 import Cardano.Chain.Slotting (EpochSlots(EpochSlots))
 import Cardano.Mirror (mainnetEpochFiles)
 
+import Test.Cardano.Chain.Config (mainnetEpochSlots)
 
 tests :: IO Bool
 tests = H.checkSequential $$(H.discoverPrefix "prop")
@@ -29,7 +30,7 @@ propDeserializeEpochs = H.withTests 1 $ H.property $ do
   -- to work). Now the question is whether it is OK to use an hardcoded value
   -- for the number of slots per epoch, and if so in which module should we
   -- store this constant?
-  let stream = parseEpochFiles (EpochSlots 21600) files
+  let stream = parseEpochFiles mainnetEpochSlots files
   result <- (liftIO . runResourceT . runExceptT . S.run) (S.maps discard stream)
   result === Right ()
  where

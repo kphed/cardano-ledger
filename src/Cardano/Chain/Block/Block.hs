@@ -153,10 +153,10 @@ renderBlock es block =
     . "  update payload: " . build . "\n"
     . "  " . build
     )
-    (WithEpochSlots es $ blockHeader block) -- TODO: ask the more experiences
-                                            -- devs around you: `build` is
-                                            -- overloaded as hell. Are there
-                                            -- better ways to do this?
+    (WithEpochSlots es $ blockHeader block) -- TODO: ask the more experienced
+                                            -- devs around: `build` is heavily
+                                            -- overloaded. Are there better
+                                            -- ways to do this?
     (length txs)
     txs
     (blockDlgPayload block)
@@ -166,11 +166,17 @@ renderBlock es block =
   where txs = bodyTxs $ blockBody block
 
 
--- | TODO: document this and ask what `encodeBlock` is doing?
+-- | Encode a block, given a number of slots-per-epoch.
+--
+-- Unlike 'encodeBlock', this function does not take the deprecated epoch
+-- boundary blocks into account.
+--
+-- TODO: do we want to rename any of these functions ('encodeBlock'' or
+-- 'encodeBlock')? If so, what are good names?
 encodeBlock' :: EpochSlots -> Block -> Encoding
-encodeBlock' es block
+encodeBlock' epochSlots block
   =  encodeListLen 3
-  <> encodeHeader' es (blockHeader block)
+  <> encodeHeader' epochSlots (blockHeader block)
   <> encode (blockBody block)
   <> encode (blockExtraData block)
 
@@ -188,8 +194,8 @@ decodeABlock epochSlots = do
 
 -- | Encode a 'Block' accounting for deprecated epoch boundary blocks
 encodeBlock :: EpochSlots -> Block -> Encoding
-encodeBlock es block =
-  encodeListLen 2 <> encode (1 :: Word) <> encodeBlock' es block
+encodeBlock epochSlots block =
+  encodeListLen 2 <> encode (1 :: Word) <> encodeBlock' epochSlots block
 
 data ABlockOrBoundary a
   = ABOBBlock (ABlock a)
@@ -266,9 +272,10 @@ mkBlock
   --   right to sign this block
   -> Body
   -> Block
-mkBlock pm bv sv prevHeader es = mkBlockExplicit pm bv sv prevHash difficulty es
+mkBlock pm bv sv prevHeader epochSlots =
+  mkBlockExplicit pm bv sv prevHash difficulty epochSlots
  where
-  prevHash   = either genesisHeaderHash (hashHeader es) prevHeader
+  prevHash   = either genesisHeaderHash (hashHeader epochSlots) prevHeader
   difficulty = either (const $ ChainDifficulty 0) (succ . headerDifficulty) prevHeader
 
 -- | Smart constructor for 'Block', without requiring the entire previous
@@ -290,11 +297,12 @@ mkBlockExplicit
   --   right to sign this block
   -> Body
   -> Block
-mkBlockExplicit pm bv sv prevHash difficulty es slotId sk mDlgCert body = ABlock
-  (mkHeaderExplicit pm prevHash difficulty es slotId sk mDlgCert body extraH)
-  body
-  (Annotated extraB ())
-  ()
+mkBlockExplicit pm bv sv prevHash difficulty epochSlots slotId sk mDlgCert body =
+  ABlock
+    (mkHeaderExplicit pm prevHash difficulty epochSlots slotId sk mDlgCert body extraH)
+    body
+    (Annotated extraB ())
+    ()
  where
   extraB :: ExtraBodyData
   extraB = ExtraBodyData (mkAttributes ())
@@ -306,7 +314,7 @@ mkBlockExplicit pm bv sv prevHash difficulty es slotId sk mDlgCert body = ABlock
 --------------------------------------------------------------------------------
 
 blockHash :: EpochSlots -> Block -> HeaderHash
-blockHash es = hashHeader es . blockHeader
+blockHash epochSlots = hashHeader epochSlots . blockHeader
 
 blockHashAnnotated :: ABlock ByteString -> HeaderHash
 blockHashAnnotated = hashDecoded . fmap wrapHeaderBytes . blockHeader
@@ -330,7 +338,7 @@ blockDifficulty :: ABlock a -> ChainDifficulty
 blockDifficulty = headerDifficulty . blockHeader
 
 blockToSign :: EpochSlots -> ABlock a -> ToSign
-blockToSign es = headerToSign es . blockHeader
+blockToSign epochSlots = headerToSign epochSlots . blockHeader
 
 blockSignature :: ABlock a -> BlockSignature
 blockSignature = headerSignature . blockHeader
