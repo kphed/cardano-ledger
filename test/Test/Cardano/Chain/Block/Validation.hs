@@ -52,7 +52,7 @@ import Cardano.Chain.Block
 import Cardano.Chain.Common (BlockCount(..), mkStakeholderId)
 import Cardano.Chain.Epoch.File (ParseError, parseEpochFileWithBoundary)
 import Cardano.Chain.Genesis as Genesis (Config(..))
-import Cardano.Chain.Slotting (SlotId)
+import Cardano.Chain.Slotting (EpochSlots(EpochSlots), SlotId)
 import Cardano.Crypto (PublicKey)
 import Cardano.Mirror (mainnetEpochFiles)
 
@@ -109,7 +109,8 @@ epochValid
   :: Genesis.Config -> IORef ChainValidationState -> FilePath -> Property
 epochValid config cvsRef fp = withTests 1 . property $ do
   cvs <- liftIO $ readIORef cvsRef
-  let stream = parseEpochFileWithBoundary fp
+  -- TODO: put the hardcoded value in some central place.
+  let stream = parseEpochFileWithBoundary (EpochSlots 21600) fp
   result <- (liftIO . runResourceT . runExceptT)
     (foldChainValidationState config cvs $ S.map fst stream)
   newCvs <- evalEither result

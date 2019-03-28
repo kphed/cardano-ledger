@@ -134,7 +134,6 @@ ppsEpochSlots pps = Slotting.EpochSlots $ unSlotCount (pps ^. bkSlotsPerEpoch)
 unSlotCount :: Abstract.SlotCount -> Word64
 unSlotCount (Abstract.SlotCount x) = x
 
-
 elaborateBS
   :: Genesis.Config -- TODO: Do we want this to come from the abstract
                     -- environment? (in such case we wouldn't need this
@@ -152,7 +151,9 @@ annotateBlock epochSlots block =
   let
     decodedABlockOrBoundary =
       case
-          Binary.decodeFullDecoder "Block" Concrete.decodeABlockOrBoundary bytes
+          Binary.decodeFullDecoder
+            "Block"
+            (Concrete.decodeABlockOrBoundary epochSlots) bytes
         of
           Left err ->
             panic

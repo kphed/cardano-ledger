@@ -174,15 +174,15 @@ encodeBlock' es block
   <> encode (blockBody block)
   <> encode (blockExtraData block)
 
-decodeBlock' :: Decoder s Block
-decodeBlock' = void <$> decodeABlock
+decodeBlock' :: EpochSlots -> Decoder s Block
+decodeBlock' epochSlots = void <$> decodeABlock epochSlots
 
-decodeABlock :: Decoder s (ABlock ByteSpan)
-decodeABlock = do
+decodeABlock :: EpochSlots -> Decoder s (ABlock ByteSpan)
+decodeABlock epochSlots = do
   Annotated (header, body, ed) byteSpan <-
     annotatedDecoder $ do
       enforceSize "Block" 3
-      (,,) <$> decodeAHeader <*> decodeABody <*> decodeAnnotated
+      (,,) <$> decodeAHeader epochSlots <*> decodeABody <*> decodeAnnotated
   pure $ ABlock header body ed byteSpan
 
 
@@ -203,18 +203,19 @@ data ABlockOrBoundary a
 --   now deprecated these explicit boundary blocks, but we still need to decode
 --   blocks in the old format. In the case that we find a boundary block, we
 --   drop it using 'dropBoundaryBlock' and return a 'Nothing'.
-decodeABlockOrBoundary :: Decoder s (ABlockOrBoundary ByteSpan)
-decodeABlockOrBoundary = do
+decodeABlockOrBoundary :: EpochSlots -> Decoder s (ABlockOrBoundary ByteSpan)
+decodeABlockOrBoundary epochSlots = do
   enforceSize "Block" 2
   decode @Word >>= \case
     0 -> ABOBBoundary <$> dropBoundaryBlock
-    1 -> ABOBBlock <$> decodeABlock
+    1 -> ABOBBlock <$> decodeABlock epochSlots
     t -> cborError $ DecoderErrorUnknownTag "Block" (fromIntegral t)
 
-decodeBlockOrBoundary :: Decoder s (Maybe Block)
-decodeBlockOrBoundary = decodeABlockOrBoundary >>= \case
-  ABOBBoundary _ -> pure Nothing
-  ABOBBlock    b -> pure . Just $ void b
+decodeBlockOrBoundary :: EpochSlots -> Decoder s (Maybe Block)
+decodeBlockOrBoundary epochSlots =
+  decodeABlockOrBoundary epochSlots >>= \case
+    ABOBBoundary _ -> pure Nothing
+    ABOBBlock    b -> pure . Just $ void b
 
 --------------------------------------------------------------------------------
 -- BoundaryBlock

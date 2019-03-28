@@ -76,10 +76,19 @@ genLocalSlotIndex epochSlots = mkLocalSlotIndex'
       err
     Right lsi -> lsi
 
--- Restricted to upper bound of `Word64` because `mkLocalSlotIndex`
--- creates a `LocalSlotIndex` which is limited to a `Word64`.
+-- | Generator for slots-per-epoch. This will generate a positive number of
+-- slots per-epoch, and it will have an upper bound of @maxBound :: Word16 =
+-- 2^16@. The reason for this upper bound is that when converting a slot number
+-- (which is an absolute value) to a pair of epoch and slot-count, this
+-- slot-count, which represents a local index of a slot within the epoch and is
+-- represented using a 'Word16', is calculated taking the reminder of dividing
+-- the slot number by the number of slots-per-epoch ('EpochSlots'). So if the
+-- generated epoch would be greater than @2^16@ we couldn't guarantee that the
+-- local-index would fit inside its representation.
+--
 genEpochSlots :: Gen EpochSlots
-genEpochSlots = EpochSlots <$> Gen.word64 Range.constantBounded
+genEpochSlots =
+  EpochSlots . succ . fromIntegral <$> Gen.word16 Range.constantBounded
 
 genSlotId :: EpochSlots -> Gen SlotId
 genSlotId epochSlots =

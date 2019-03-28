@@ -112,11 +112,16 @@ import Test.Cardano.Crypto.Gen (feedPM)
 -- Header
 --------------------------------------------------------------------------------
 
+-- | Number of slots-per-epoch to be used throughout the examples in this
+-- module.
+exampleEs :: EpochSlots
+exampleEs = EpochSlots 50
+
 goldenHeader :: Property
 goldenHeader =
   _goldenTestCBOR
-    (encodeHeader' (EpochSlots 50))
-    decodeHeader'
+    (encodeHeader' exampleEs)
+    (decodeHeader' exampleEs)
     exampleHeader
     "test/golden/bi/block/Header"
 
@@ -162,7 +167,7 @@ roundTripHeaderCompat =
       trippingBuildable
         esh
         (serializeEncoding . encodeHeader es . unWithEpochSlots)
-        (fmap (WithEpochSlots es . fromJust) . decodeFullDecoder "Header" decodeHeader)
+        (fmap (WithEpochSlots es . fromJust) . decodeFullDecoder "Header" (decodeHeader es))
 
 
 --------------------------------------------------------------------------------
@@ -184,7 +189,7 @@ roundTripBlockCompat =
       trippingBuildable
         esb
         (serializeEncoding . encodeBlock es . unWithEpochSlots)
-        (fmap (WithEpochSlots es . fromJust) . decodeFullDecoder "Block" decodeBlockOrBoundary)
+        (fmap (WithEpochSlots es . fromJust) . decodeFullDecoder "Block" (decodeBlockOrBoundary es))
 
 
 --------------------------------------------------------------------------------
@@ -276,14 +281,11 @@ roundTripBodyBi = eachOf 20 (feedPM genBody) roundTripsBiShow
 -- ConsensusData
 --------------------------------------------------------------------------------
 
-exampleEs :: EpochSlots
-exampleEs = EpochSlots 50
-
 goldenConsensusData :: Property
 goldenConsensusData =
   _goldenTestCBOR
     (encodeConcensusData exampleEs)
-    decodeConcensusData
+    (decodeConcensusData exampleEs)
     mcd
     "test/golden/bi/block/ConsensusData"
  where
@@ -303,7 +305,7 @@ roundTripConsensusData =
       tripping
         cd
         (serializeEncoding . encodeConcensusData es)
-        (decodeFullDecoder "ConsensusData" decodeConcensusData)
+        (decodeFullDecoder "ConsensusData" $ decodeConcensusData es)
 
 -- TODO: put this in the appropriate place, and think whether we can give a better name.
 genWithEpochSlots
@@ -380,8 +382,8 @@ exampleHeader = mkHeaderExplicit
   (ProtocolMagicId 7)
   exampleHeaderHash
   exampleChainDifficulty
-  (EpochSlots 50)
-  (exampleFlatSlotId $ EpochSlots 50)
+  exampleEs
+  (exampleFlatSlotId exampleEs)
   exampleSecretKey
   Nothing
   exampleBody

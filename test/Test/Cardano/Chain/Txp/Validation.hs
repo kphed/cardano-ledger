@@ -30,7 +30,7 @@ import System.FilePath (takeFileName)
 import Cardano.Chain.Block (ABlund, blockSlot, blockTxPayload)
 import Cardano.Chain.Epoch.File (ParseError, parseEpochFile)
 import Cardano.Chain.Genesis (GenesisData(..), readGenesisData)
-import Cardano.Chain.Slotting (SlotId)
+import Cardano.Chain.Slotting (SlotId, EpochSlots(EpochSlots))
 import Cardano.Chain.Txp
   (UTxO, UTxOValidationError, aUnTxPayload, genesisUtxo, updateUTxOWitness)
 import Cardano.Crypto (ProtocolMagicId, getProtocolMagicId)
@@ -86,7 +86,8 @@ data Error
 epochValid :: ProtocolMagicId -> IORef UTxO -> FilePath -> Property
 epochValid pm utxoRef fp = withTests 1 . property $ do
   utxo <- liftIO $ readIORef utxoRef
-  let stream = parseEpochFile fp
+  -- TODO: put this hardcoded module in some central file.
+  let stream = parseEpochFile (EpochSlots 21600) fp
   result  <- (liftIO . runResourceT . runExceptT) (foldUTxO pm utxo stream)
   newUtxo <- evalEither result
   liftIO $ writeIORef utxoRef newUtxo

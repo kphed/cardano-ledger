@@ -196,11 +196,12 @@ encodeHeader' es h
   <> encodeConcensusData es (headerConsensusData h)
   <> encode (headerExtraData h)
 
-decodeHeader' :: Decoder s Header -- TODO: we might need the number of slots-per-epoch as parameter!
-decodeHeader' = void <$> decodeAHeader
+decodeHeader' :: EpochSlots -> Decoder s Header
+decodeHeader' epochSlots =
+  void <$> decodeAHeader epochSlots
 
-decodeAHeader :: Decoder s (AHeader ByteSpan)
-decodeAHeader = do
+decodeAHeader :: EpochSlots -> Decoder s (AHeader ByteSpan)
+decodeAHeader epochSlots = do
   Annotated (pm, prevHash, proof, cd, extraData) byteSpan <-
     annotatedDecoder $ do
       enforceSize "Header" 5
@@ -208,7 +209,7 @@ decodeAHeader = do
         <$> decode
         <*> decodeAnnotated
         <*> decodeAnnotated
-        <*> decodeAConsensus
+        <*> decodeAConsensus epochSlots
         <*> decodeAnnotated
   pure $ AHeader pm prevHash proof cd extraData byteSpan
 
@@ -294,10 +295,6 @@ mkHeaderExplicit pm prevHash difficulty es slotId sk mDlgCert body extra = AHead
 epochAndSlotCount :: FlatSlotId -> SlotId
 epochAndSlotCount = unflattenSlotId (EpochSlots 21600)
 
--- | TODO: the same considerations as 'epochAndSlotCount'
-slotId :: SlotId -> FlatSlotId
-slotId = flattenSlotId (EpochSlots 21600)
-
 headerSlot :: AHeader a -> FlatSlotId
 headerSlot = consensusSlot . headerConsensusData
 
@@ -381,14 +378,14 @@ verifyHeader pm header = do
 encodeHeader :: EpochSlots -> Header -> Encoding
 encodeHeader es h = encodeListLen 2 <> encode (1 :: Word) <> encodeHeader' es h
 
-decodeHeader :: Decoder s (Maybe Header)
-decodeHeader = do
+decodeHeader :: EpochSlots -> Decoder s (Maybe Header)
+decodeHeader epochSlots = do
   enforceSize "Header" 2
   decode @Word >>= \case
     0 -> do
       void dropBoundaryHeader
       pure Nothing
-    1 -> Just <$!> decodeHeader'
+    1 -> Just <$!> decodeHeader' epochSlots
     t -> cborError $ DecoderErrorUnknownTag "Header" (fromIntegral t)
 
 --------------------------------------------------------------------------------
@@ -550,16 +547,17 @@ data AConsensusData a = AConsensusData
   } deriving (Generic, Show, Eq, Functor)
     deriving anyclass NFData
 
-decodeAConsensus :: Decoder s (AConsensusData ByteSpan)
-decodeAConsensus = do
-  enforceSize "ConsensusData" 4 -- TODO: here we need to decode a SlotId into a FlatSlotId!
-  -- The slot id used in 'AConsensusData' is encoded as a epoch and slot-count pair.
-  exsc :: Annotated SlotId ByteSpan <- decodeAnnotated
+decodeAConsensus :: EpochSlots -> Decoder s (AConsensusData ByteSpan)
+decodeAConsensus epochSlots = do
+  enforceSize "ConsensusData" 4
+  -- Next, we decode a 'SlotId' into a 'FlatSlotId': the `SlotId` used in
+  -- 'AConsensusData' is encoded as a epoch and slot-count pair.
+  epochAndSlotCount :: Annotated SlotId ByteSpan <- decodeAnnotated
   pk <- decode
   annChaiDifficulty <- decodeAnnotated
   consensusSig <- decode
-  let afsid = first slotId exsc
-  pure $! AConsensusData afsid pk annChaiDifficulty consensusSig
+  let slotNo = first (flattenSlotId epochSlots) epochAndSlotCount
+  pure $! AConsensusData slotNo pk annChaiDifficulty consensusSig
 
 consensusSlot :: AConsensusData a -> FlatSlotId
 consensusSlot = unAnnotated . aConsensusSlot
@@ -575,8 +573,9 @@ encodeConcensusData es cd
   <> encode (consensusDifficulty cd)
   <> encode (consensusSignature cd)
 
-decodeConcensusData :: Decoder s ConsensusData
-decodeConcensusData = (fmap . fmap) (const ()) decodeAConsensus
+decodeConcensusData :: EpochSlots -> Decoder s ConsensusData
+decodeConcensusData epochSlots =
+  (fmap . fmap) (const ()) (decodeAConsensus epochSlots)
 
 data ConsensusError = ConsensusSelfSignedPSK
   deriving (Show, Eq)
