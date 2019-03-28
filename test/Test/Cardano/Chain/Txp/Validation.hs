@@ -30,7 +30,7 @@ import System.FilePath (takeFileName)
 import Cardano.Chain.Block (ABlund, blockSlot, blockTxPayload)
 import Cardano.Chain.Epoch.File (ParseError, parseEpochFile)
 import Cardano.Chain.Genesis (GenesisData(..), readGenesisData)
-import Cardano.Chain.Slotting (SlotId, EpochSlots(EpochSlots))
+import Cardano.Chain.Slotting (SlotId, EpochSlots(EpochSlots), FlatSlotId)
 import Cardano.Chain.Txp
   (UTxO, UTxOValidationError, aUnTxPayload, genesisUtxo, updateUTxOWitness)
 import Cardano.Crypto (ProtocolMagicId, getProtocolMagicId)
@@ -78,7 +78,7 @@ tests scenario = do
 
 data Error
   = ErrorParseError ParseError
-  | ErrorUTxOValidationError SlotId UTxOValidationError
+  | ErrorUTxOValidationError FlatSlotId UTxOValidationError
   deriving (Eq, Show)
 
 

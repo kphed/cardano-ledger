@@ -161,7 +161,7 @@ genBlock pm epochSlots =
     <*> genHeaderHash
     <*> genChainDifficulty
     <*> pure epochSlots
-    <*> genSlotId epochSlots
+    <*> genFlatSlotId
     <*> genSecretKey
     <*> pure Nothing
     <*> genBody pm

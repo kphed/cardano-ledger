@@ -58,7 +58,6 @@ module Cardano.Chain.Block.Header
 
   -- * Utility functions
   , genesisHeaderHash
-  , epochAndSlotCount -- TODO: we might want to place this in a different location, or replace by a better function
   , renderHeader
   )
 where
@@ -168,7 +167,7 @@ renderHeader es header =
     ( "Header:\n"
     . "    hash: " . hashHexF . "\n"
     . "    previous block: " . hashHexF . "\n"
-    . "    slot: " . slotIdF . "\n"
+    . "    slot: " . build . "\n"
     . "    difficulty: " . int . "\n"
     . "    leader: " . build . "\n"
     . "    signature: " . build . "\n"
@@ -176,7 +175,7 @@ renderHeader es header =
     )
     headerHash
     (headerPrevHash header)
-    (epochAndSlotCount $ consensusSlot consensus)
+    (consensusSlot consensus)
     (unChainDifficulty $ consensusDifficulty consensus)
     (consensusLeaderKey consensus)
     (consensusSignature consensus)
@@ -288,13 +287,6 @@ mkHeaderExplicit pm prevHash difficulty es slotId sk mDlgCert body extra = AHead
 
   consensus = consensusData slotId leaderPk difficulty signature
 
--- | Epoch and slot count
---
--- TODO: we hardcode the number of slots per epoch for now. We might want to
--- calculate this from the protocol parameters (use `k` and `kEpochSlots`).
-epochAndSlotCount :: FlatSlotId -> SlotId
-epochAndSlotCount = unflattenSlotId (EpochSlots 21600)
-
 headerSlot :: AHeader a -> FlatSlotId
 headerSlot = consensusSlot . headerConsensusData
 
@@ -319,11 +311,11 @@ headerAttributes = ehdAttributes . headerExtraData
 headerEBDataProof :: AHeader a -> Hash ExtraBodyData
 headerEBDataProof = ehdEBDataProof . headerExtraData
 
-headerToSign :: AHeader a -> ToSign
-headerToSign h = ToSign
+headerToSign :: EpochSlots -> AHeader a -> ToSign
+headerToSign es h = ToSign
   (headerPrevHash h)
   (headerProof h)
-  (epochAndSlotCount $ headerSlot h)
+  (unflattenSlotId es $ headerSlot h)
   (headerDifficulty h)
   (headerExtraData h)
 
@@ -350,8 +342,12 @@ instance B.Buildable HeaderError where
 
 -- | Verify a main block header in isolation
 verifyHeader
-  :: MonadError HeaderError m => ProtocolMagicId -> AHeader ByteString -> m ()
-verifyHeader pm header = do
+  :: MonadError HeaderError m
+  => ProtocolMagicId
+  -> EpochSlots
+  -> AHeader ByteString
+  -> m ()
+verifyHeader pm es header = do
   -- Previous header hash is always valid.
   -- Body proof is just a bunch of hashes, which is always valid (although must
   -- be checked against the actual body, in verifyBlock. Consensus data and
@@ -372,7 +368,7 @@ verifyHeader pm header = do
     sig
   verifyBlockSignature (BlockPSignatureHeavy proxySig) =
     proxyVerifyDecoded pm SignMainBlockHeavy proxySig (const True) signed
-  signed    = recoverSignedBytes header
+  signed    = recoverSignedBytes es header
   consensus = headerConsensusData header
 
 encodeHeader :: EpochSlots -> Header -> Encoding
@@ -479,8 +475,11 @@ instance Bi BlockSignature where
 --------------------------------------------------------------------------------
 
 -- | Produces the ByteString that was signed in the block
-recoverSignedBytes :: AHeader ByteString -> Annotated ToSign ByteString
-recoverSignedBytes h = Annotated toSign bytes
+recoverSignedBytes
+  :: EpochSlots
+  -> AHeader ByteString
+  -> Annotated ToSign ByteString
+recoverSignedBytes es h = Annotated toSign bytes
  where
   bytes = BS.concat
     [ "\133"
@@ -495,7 +494,7 @@ recoverSignedBytes h = Annotated toSign bytes
   toSign = ToSign
     (headerPrevHash h)
     (headerProof h)
-    (epochAndSlotCount $ headerSlot h)
+    (unflattenSlotId es $ headerSlot h)
     (headerDifficulty h)
     (headerExtraData h)
 

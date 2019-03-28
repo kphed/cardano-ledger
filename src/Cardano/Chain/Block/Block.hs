@@ -88,7 +88,6 @@ import Cardano.Chain.Block.Header
   , decodeAHeader
   , dropBoundaryHeader
   , encodeHeader'
-  , epochAndSlotCount -- TODO: put this in the right module. Might not be needed after the refactoring is complete.
   , genesisHeaderHash
   , hashHeader
   , headerAttributes
@@ -113,6 +112,7 @@ import Cardano.Chain.Genesis.Hash (GenesisHash(..))
 import Cardano.Chain.Slotting
   ( EpochSlots(EpochSlots)
   , SlotId(..)
+  , FlatSlotId
   , WithEpochSlots(WithEpochSlots)
   , flattenSlotId
   )
@@ -258,7 +258,7 @@ mkBlock
   -> SoftwareVersion
   -> Either GenesisHash Header
   -> EpochSlots
-  -> SlotId
+  -> FlatSlotId
   -> SecretKey
   -- ^ The 'SecretKey' used for signing the block
   -> Maybe Delegation.Certificate
@@ -282,7 +282,7 @@ mkBlockExplicit
   -> HeaderHash
   -> ChainDifficulty
   -> EpochSlots
-  -> SlotId -- TODO: change this to FlatSlotId
+  -> FlatSlotId
   -> SecretKey
   -- ^ The 'SecretKey' used for signing the block
   -> Maybe Delegation.Certificate
@@ -291,7 +291,7 @@ mkBlockExplicit
   -> Body
   -> Block
 mkBlockExplicit pm bv sv prevHash difficulty es slotId sk mDlgCert body = ABlock
-  (mkHeaderExplicit pm prevHash difficulty es fsid sk mDlgCert body extraH)
+  (mkHeaderExplicit pm prevHash difficulty es slotId sk mDlgCert body extraH)
   body
   (Annotated extraB ())
   ()
@@ -300,11 +300,6 @@ mkBlockExplicit pm bv sv prevHash difficulty es slotId sk mDlgCert body = ABlock
   extraB = ExtraBodyData (mkAttributes ())
   extraH :: ExtraHeaderData
   extraH = ExtraHeaderData bv sv (mkAttributes ()) (hash extraB)
-
-  -- TODO: for now we hardcode the number of slots per epoch. See 'epochAndSlotCount'
-  -- for details on how we'd want to do this properly.
-  fsid = flattenSlotId es slotId
-
 
 --------------------------------------------------------------------------------
 -- Block accessors
@@ -325,8 +320,8 @@ blockPrevHash = headerPrevHash . blockHeader
 blockProof :: ABlock a -> Proof
 blockProof = headerProof . blockHeader
 
-blockSlot :: ABlock a -> SlotId
-blockSlot = epochAndSlotCount . headerSlot . blockHeader
+blockSlot :: ABlock a -> FlatSlotId
+blockSlot = headerSlot . blockHeader
 
 blockLeaderKey :: ABlock a -> PublicKey
 blockLeaderKey = headerLeaderKey . blockHeader
@@ -334,8 +329,8 @@ blockLeaderKey = headerLeaderKey . blockHeader
 blockDifficulty :: ABlock a -> ChainDifficulty
 blockDifficulty = headerDifficulty . blockHeader
 
-blockToSign :: ABlock a -> ToSign
-blockToSign = headerToSign . blockHeader
+blockToSign :: EpochSlots -> ABlock a -> ToSign
+blockToSign es = headerToSign es . blockHeader
 
 blockSignature :: ABlock a -> BlockSignature
 blockSignature = headerSignature . blockHeader

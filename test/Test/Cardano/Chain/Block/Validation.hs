@@ -52,7 +52,7 @@ import Cardano.Chain.Block
 import Cardano.Chain.Common (BlockCount(..), mkStakeholderId)
 import Cardano.Chain.Epoch.File (ParseError, parseEpochFileWithBoundary)
 import Cardano.Chain.Genesis as Genesis (Config(..))
-import Cardano.Chain.Slotting (EpochSlots(EpochSlots), SlotId)
+import Cardano.Chain.Slotting (EpochSlots(EpochSlots), FlatSlotId, SlotId)
 import Cardano.Crypto (PublicKey)
 import Cardano.Mirror (mainnetEpochFiles)
 
@@ -100,7 +100,7 @@ tests scenario = do
 
 data Error
   = ErrorParseError ParseError
-  | ErrorChainValidationError (Maybe SlotId) ChainValidationError
+  | ErrorChainValidationError (Maybe FlatSlotId) ChainValidationError
   deriving (Eq, Show)
 
 
@@ -133,7 +133,7 @@ foldChainValidationState config cvs blocks = S.foldM_
   pure
   (hoist (withExceptT ErrorParseError) blocks)
  where
-  blockOrBoundarySlot :: ABlockOrBoundary a -> Maybe SlotId
+  blockOrBoundarySlot :: ABlockOrBoundary a -> Maybe FlatSlotId
   blockOrBoundarySlot = \case
     ABOBBoundary _     -> Nothing
     ABOBBlock    block -> Just $ blockSlot block

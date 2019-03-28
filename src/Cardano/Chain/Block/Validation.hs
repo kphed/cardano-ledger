@@ -248,7 +248,7 @@ updateBody config cvs b = do
   pure $ cvs
     {cvsDelegationState = delegationState'}
  where
-  slot = flattenSlotId (configEpochSlots config) $ blockSlot b
+  slot = blockSlot b
   d    = configSlotSecurityParam config
 
   delegationState = cvsDelegationState cvs
